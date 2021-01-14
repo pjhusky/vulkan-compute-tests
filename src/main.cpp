@@ -624,8 +624,10 @@ public:
         Create a shader module. A shader module basically just encapsulates some shader code.
         */
         uint32_t filelength;
-        // the code in comp.spv was created by running the command:
-        // $(VULKAN_SDK)bin/glslangValidator.exe -V mandelbrot.comp -o mandelbrot.spv
+        // the code in mandelbrot.spv can be created by running the following command in the 'shaders' folder:
+        // $(VULKAN_SDK)bin/glslangValidator -V mandelbrot.comp -o mandelbrot.spv
+        // NOTE: if the instructions in mac-vulkan-setup-guide.md were followed, $(VULKAN_SDK)bin/ is
+        //       actually part of the path, so you can just type 'glslangValidator -V mandelbrot.comp -o mandelbrot.spv'
         uint32_t* code = readFile(filelength, "shaders/mandelbrot.spv");
         VkShaderModuleCreateInfo createInfo = {};
         createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
