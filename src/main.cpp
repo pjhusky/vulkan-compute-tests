@@ -625,8 +625,8 @@ public:
         */
         uint32_t filelength;
         // the code in comp.spv was created by running the command:
-        // glslangValidator.exe -V shader.comp
-        uint32_t* code = readFile(filelength, "shaders/comp.spv");
+        // $(VULKAN_SDK)bin/glslangValidator.exe -V mandelbrot.comp -o mandelbrot.spv
+        uint32_t* code = readFile(filelength, "shaders/mandelbrot.spv");
         VkShaderModuleCreateInfo createInfo = {};
         createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
         createInfo.pCode = code;

@@ -45,7 +45,7 @@ void main() {
   // we use a simple cosine palette to determine color:
   // http://iquilezles.org/www/articles/palettes/palettes.htm         
   float t = float(n) / float(M);
-  vec3 d = vec3(0.3, 0.3 ,0.5);
+  vec3 d = vec3(0.66, 0.3 ,0.5);
   vec3 e = vec3(-0.2, -0.3 ,-0.5);
   vec3 f = vec3(2.1, 2.0, 3.0);
   vec3 g = vec3(0.0, 0.1, 0.0);
