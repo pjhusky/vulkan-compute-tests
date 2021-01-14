@@ -32,7 +32,7 @@
         ```
         but you can really put them anywhere you like (maybe you'll need access rights etc., so choose wisely).
 
-    * put the following lines into ~/.zshrc
+    * for permanent system-wide usage put the following lines into ~/.zshrc 
     ```
     # VULKAN setup from
     # https://vulkan.lunarg.com/doc/view/1.1.108.0/mac/getting_started.html
@@ -52,7 +52,7 @@
 
     * run 'source ~/zshrc', or open a new Terminal
 
-    * add vulkan-header includePath to Visual Studio Code:
+    * (optional) add vulkan-header includePath to Visual Studio Code:
 
         * 'View|Command Palette...', or shortcut 'CMD+SHIFT+P' (opens command palette)
 
