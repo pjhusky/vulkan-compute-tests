@@ -9,7 +9,13 @@
         ==> To compile vkQuake, first install the build dependencies with Homebrew:
         ```
         brew install molten-vk vulkan-headers sdl2 libvorbis flac mad
-        ```    
+        ```
+        NOTE: it was enough to 
+        ```
+        brew install sdl2 libvorbis flac mad
+        ```
+        so it seems, that the Vulkan/Molten-VK part was installed in a fully compatible way - this seems to support the assumption, that Vulkan support could just as well be installed through homebrew as well, which would be a lot easier/faster!
+        
 
 * TL;DR:
 
