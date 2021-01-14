@@ -2,6 +2,14 @@
     ```
     https://vulkan.lunarg.com/doc/view/1.1.108.0/mac/getting_started.html
     ```
+    * NOTE: maybe follow these short instructions from
+        ```
+        https://github.com/Novum/vkQuake
+        ```
+        ==> To compile vkQuake, first install the build dependencies with Homebrew:
+        ```
+        brew install molten-vk vulkan-headers sdl2 libvorbis flac mad
+        ```    
 
 * TL;DR:
 
