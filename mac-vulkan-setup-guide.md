@@ -14,8 +14,8 @@
         ```
         brew install sdl2 libvorbis flac mad
         ```
-        so it seems, that the Vulkan/Molten-VK part was installed in a fully compatible way - this seems to support the assumption, that Vulkan support could just as well be installed through homebrew as well, which would be a lot easier/faster!
-        
+        so it seems, that the Vulkan/Molten-VK part was installed in a fully compatible way - this supports the assumption, that Vulkan support could just as well be installed through homebrew as well, which would be a lot easier/faster!
+
 
 * TL;DR:
 
