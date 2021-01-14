@@ -650,6 +650,13 @@ public:
         shaderStageCreateInfo.module = computeShaderModule;
         shaderStageCreateInfo.pName = "main";
 
+        // [husky]: Define the push constant range used by the pipeline layout
+		// Note that the spec only requires a minimum of 128 bytes, so for passing larger blocks of data you'd use UBOs or SSBOs
+		VkPushConstantRange pushConstantRange{};
+		pushConstantRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+		pushConstantRange.offset = 0;
+		pushConstantRange.size = 4 * sizeof( float );
+
         /*
         The pipeline layout allows the pipeline to access descriptor sets.
         So we just specify the descriptor set layout we created earlier.
@@ -658,6 +665,10 @@ public:
         pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         pipelineLayoutCreateInfo.setLayoutCount = 1;
         pipelineLayoutCreateInfo.pSetLayouts = &descriptorSetLayout;
+        // [husky]
+        pipelineLayoutCreateInfo.pushConstantRangeCount  = 1;
+		pipelineLayoutCreateInfo.pPushConstantRanges = &pushConstantRange;        
+
         VK_CHECK_RESULT(vkCreatePipelineLayout(device, &pipelineLayoutCreateInfo, NULL, &pipelineLayout));
 
         VkComputePipelineCreateInfo pipelineCreateInfo = {};
@@ -716,6 +727,14 @@ public:
         */
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &descriptorSet, 0, NULL);
+
+        float kColor[4]{ 0.1f, 0.7f, 0.6f, 0.0f };
+        // struct pushConst_t {
+        //     float kColor1[3]{ 0.1f, 0.7f, 0.6f };
+        //     float kColor2[3]{ 0.9f, 0.1f, 0.3f };
+        // } pushConst;
+        vkCmdPushConstants( commandBuffer, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof( float ) * 4, kColor );
+        //vkCmdPushConstants( commandBuffer, pipelineLayout, VK_PIPELINE_BIND_POINT_COMPUTE, 0, sizeof( float ) * 3, kColor );
 
         /*
         Calling vkCmdDispatch basically starts the compute pipeline, and executes the compute shader.
