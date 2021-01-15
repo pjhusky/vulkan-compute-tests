@@ -266,7 +266,7 @@ public:
      }
 
     void createInstance() {
-        std::vector<const char *> enabledExtensions;
+        std::vector<const char *> enabledInstanceExtensions;
 
         /*
         By enabling validation layers, Vulkan will emit warnings if the API
@@ -327,7 +327,18 @@ public:
             if (!foundExtension) {
                 throw std::runtime_error("Extension VK_EXT_DEBUG_REPORT_EXTENSION_NAME not supported\n");
             }
-            enabledExtensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+            enabledInstanceExtensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+
+            /*
+            > Debug Report: Validation: Validation Error: [ VUID-vkCreateDevice-ppEnabledExtensionNames-01387 ] Object 0: 
+              VK_NULL_HANDLE, type = VK_OBJECT_TYPE_INSTANCE; | MessageID = 0x12537a2c | 
+              Missing extension required by the device extension VK_KHR_portability_subset: 
+              VK_KHR_get_physical_device_properties2. The Vulkan spec states: All required extensions for each extension in the 
+              VkDeviceCreateInfo::ppEnabledExtensionNames list must also be present in that list 
+              (https://vulkan.lunarg.com/doc/view/1.2.162.1/mac/1.2-extensions/vkspec.html#VUID-vkCreateDevice-ppEnabledExtensionNames-01387)
+            */
+            // Reading device properties and features for multiview requires VK_KHR_get_physical_device_properties2 to be enabled
+     		enabledInstanceExtensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
 
             //???
             //enabledExtensions.push_back(VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME);
@@ -351,23 +362,23 @@ public:
         applicationInfo.engineVersion = 0;
         applicationInfo.apiVersion = VK_API_VERSION_1_0;;
 
-        VkInstanceCreateInfo createInfo = {};
-        createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-        createInfo.flags = 0;
-        createInfo.pApplicationInfo = &applicationInfo;
+        VkInstanceCreateInfo instanceCreateInfo = {};
+        instanceCreateInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+        instanceCreateInfo.flags = 0;
+        instanceCreateInfo.pApplicationInfo = &applicationInfo;
 
         // Give our desired layers and extensions to vulkan.
-        createInfo.enabledLayerCount = enabledLayers.size();
-        createInfo.ppEnabledLayerNames = enabledLayers.data();
-        createInfo.enabledExtensionCount = enabledExtensions.size();
-        createInfo.ppEnabledExtensionNames = enabledExtensions.data();
+        instanceCreateInfo.enabledLayerCount = enabledLayers.size();
+        instanceCreateInfo.ppEnabledLayerNames = enabledLayers.data();
+        instanceCreateInfo.enabledExtensionCount = enabledInstanceExtensions.size();
+        instanceCreateInfo.ppEnabledExtensionNames = enabledInstanceExtensions.data();
 
         /*
         Actually create the instance.
         Having created the instance, we can actually start using vulkan.
         */
         VK_CHECK_RESULT(vkCreateInstance(
-            &createInfo,
+            &instanceCreateInfo,
             NULL,
             &instance));
 
@@ -407,9 +418,59 @@ public:
             throw std::runtime_error("could not find a device with vulkan support");
         }
 
+        printf( "found %u Vulkan device%s\n", deviceCount, ( deviceCount != 1 ) ? "s" : "" );
+
         std::vector<VkPhysicalDevice> devices(deviceCount);
         vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
 
+        printf( "found the following instance extensions:\n" );
+        // Get extensions supported by the instance and store for later use
+        uint32_t instanceExtensionCount = 0;
+        vkEnumerateInstanceExtensionProperties(nullptr, &instanceExtensionCount, nullptr);
+        if ( instanceExtensionCount > 0 )
+        {
+            std::vector<VkExtensionProperties> instanceExtensions( instanceExtensionCount );
+            if (vkEnumerateInstanceExtensionProperties( nullptr, &instanceExtensionCount, &instanceExtensions.front()) == VK_SUCCESS )
+            {
+                for ( VkExtensionProperties instanceExtension : instanceExtensions )
+                {
+                    //supportedInstanceExtensions.push_back( instanceExtension.extensionName );
+                    printf( "   %s \n", instanceExtension.extensionName );
+                }
+            }
+        }
+        printf( "\n" );
+
+    #if 1
+        for ( VkPhysicalDevice& pyhsicalDevice : devices ) {
+            static uint32_t deviceNum = 0;
+
+            // VkPhysicalDeviceProperties properties;
+            // vkGetPhysicalDeviceProperties( physicalDevice, &properties );
+            
+            //printf( "device %u: %s\n", deviceNum, properties.deviceName );
+            
+
+            // !!! CRASHES !!!
+            //uint32_t deviceExtensionCount;
+            //vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &deviceExtensionCount, nullptr);
+
+            // std::vector<VkExtensionProperties> deviceExtensions ( deviceExtensionCount );
+            // vkEnumerateDeviceExtensionProperties( physicalDevice, nullptr, &deviceExtensionCount, deviceExtensions.data() );
+            // for ( auto& deviceExtension : deviceExtensions )
+            // {
+            //     // if ( !strcmp( deviceExtension.extensionName, VK_EXT_DEBUG_MARKER_EXTENSION_NAME ) )
+            //     // {
+            //     //     extensionPresent = true;
+            //     // }
+
+            //     printf( "%s ", deviceExtension.extensionName );
+            // }
+            // printf( "\n" );
+
+            deviceNum++;
+        }
+    #endif  
         /*
         Next, we choose a device that can be used for our purposes.
 
@@ -438,6 +499,11 @@ public:
                 break;
             }
         }
+        //physicalDevice = devices[ 1 ]; // chose AMD GPU
+        // for ( const VkPhysicalDevice& device : devices ) {
+        //     VkPhysicalDeviceFeatures physicalDeviceFeatures = {};
+        //     physicalDeviceFeatures.shaderFloat64 = VkBool32{ true };
+        // }
     }
 
     // Returns the index of a queue family that supports compute operations.
@@ -512,6 +578,28 @@ public:
         //const char *const extensions[] = { "VK_KHR_portability_subset" };
         //deviceCreateInfo.ppEnabledExtensionNames = extensions;
         //deviceCreateInfo.enabledExtensionCount = 1;
+
+        /*
+        > Debug Report: Validation: Validation Error: [ VUID-VkDeviceCreateInfo-pProperties-04451 ] Object 0: 
+          handle = 0x7fa10fd30cb0, type = VK_OBJECT_TYPE_PHYSICAL_DEVICE; | MessageID = 0x3a3b6ca0 | 
+          vkCreateDevice: VK_KHR_portability_subset must be enabled because physical device VkPhysicalDevice 0x7fa10fd30cb0[] supports it 
+          The Vulkan spec states: If the [VK_KHR_portability_subset] extension is included in pProperties of 
+          vkEnumerateDeviceExtensionProperties, ppEnabledExtensions must include "VK_KHR_portability_subset". 
+          (https://vulkan.lunarg.com/doc/view/1.2.162.1/mac/1.2-extensions/vkspec.html#VUID-VkDeviceCreateInfo-pProperties-04451)        
+        */
+        std::vector<const char*> deviceExtensions;
+        deviceExtensions.push_back( "VK_KHR_portability_subset" );
+        deviceCreateInfo.enabledExtensionCount = (uint32_t)deviceExtensions.size();
+        deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions.data();
+
+        // VkPhysicalDeviceFeatures2 physicalDeviceFeatures2{};
+		// //if (pNextChain) {
+		// 	physicalDeviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+		// 	physicalDeviceFeatures2.features = enabledFeatures;
+		// 	physicalDeviceFeatures2.pNext = pNextChain;
+		// 	deviceCreateInfo.pEnabledFeatures = nullptr;
+		// 	deviceCreateInfo.pNext = &physicalDeviceFeatures2;
+		// //}
 
 
         VK_CHECK_RESULT(vkCreateDevice(physicalDevice, &deviceCreateInfo, NULL, &device)); // create logical device.
@@ -1000,9 +1088,9 @@ public:
 
             pushConst.samps[ 0 ] = sampNum;
 
-            printf( "pushConst.imgdim[0] = %u, pushConst.imgdim[1] = %u, pushConst.samps[0] = %u, pushConst.samps[1] = %u\n", 
-                pushConst.imgdim[0], pushConst.imgdim[1],
-                pushConst.samps[0], pushConst.samps[1] ); fflush( stdout );
+            // printf( "pushConst.imgdim[0] = %u, pushConst.imgdim[1] = %u, pushConst.samps[0] = %u, pushConst.samps[1] = %u\n", 
+            //     pushConst.imgdim[0], pushConst.imgdim[1],
+            //     pushConst.samps[0], pushConst.samps[1] ); fflush( stdout );
 
             
             vkCmdPushConstants( commandBuffer, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof( pushConst_t ), &pushConst );
