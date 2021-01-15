@@ -53,12 +53,11 @@ vec3 rand01(uvec3 x){                   // pseudo-random number generator
 bool intersect(Ray r, out int id, out vec3 x, out vec3 n) {
     float d, inf = 1e20, t = inf, eps = 1e-4;   // intersect ray with scene
     for (int i = spheres.length(); i-->0;) { 
-    #if 0 // FOR NOW ONLY FLOAT
-        Sphere s = spheres[i];                  // perform intersection test in double precision
+        Sphere s = spheres[i];                  
+    #if 0 // => perform intersection test in double precision
         dvec3 oc = dvec3(s.geo.xyz) - r.o;      // Solve t^2*d.d + 2*t*(o-s).d + (o-s).(o-s)-r^2 = 0 
         double b=dot(oc,r.d), det=b*b-dot(oc,oc)+s.geo.w*s.geo.w; 
-    #else
-        Sphere s = spheres[i];                  // perform intersection test
+    #else // perform intersection test in single precision
         vec3 oc = s.geo.xyz - r.o;      // Solve t^2*d.d + 2*t*(o-s).d + (o-s).(o-s)-r^2 = 0 
         float b=dot(oc,r.d), det=b*b-dot(oc,oc)+s.geo.w*s.geo.w; 
     #endif
