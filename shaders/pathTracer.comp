@@ -1,0 +1,166 @@
+#version 460
+#extension GL_ARB_separate_shader_objects : enable
+
+// struct Pixel{
+//   vec4 value;
+// };
+// layout(std140, binding = 0) buffer buf
+// {
+//    Pixel imageData[];
+// };
+
+layout(local_size_x = 16, local_size_y = 16) in;
+
+struct Ray { vec3 o; vec3 d; };
+struct Sphere { vec4 geo; vec4 e; vec4 c; };
+
+layout(std430, binding = 1) buffer sphereBuf { Sphere spheres[]; };
+layout(std430, binding = 0) buffer b1 { vec4 accRad[]; };
+
+//uniform uvec2 imgdim, samps;            // image dimensions and sample count
+
+// https://www.reddit.com/r/vulkan/comments/7te7ac/question_uniforms_in_glsl_under_vulkan_semantics/
+//layout(push_constant, std430) uniform PushConstants { vec4 theMember; } 
+layout(push_constant, std430) uniform PushConstants { uvec2 k_imgdim; uvec2 k_samps; } pushConstants;
+// struct TheStruct
+// {
+//     vec4 theMember;
+// };
+// layout(set=0, binding = 0) uniform TheBlock
+// {
+//     TheStruct the_struct;
+// };
+
+// float spheres[] = {  // center.xyz, radius  |  emmission.xyz, 0  |  color.rgb, refltype     
+//     1e5 - 2.6, 0, 0, 1e5,   0, 0, 0, 0,  .85, .25, .25,  1, // Left (DIFFUSE)
+//     1e5 + 2.6, 0, 0, 1e5,   0, 0, 0, 0,  .25, .35, .85,  1, // Right
+//     0, 1e5 + 2, 0, 1e5,     0, 0, 0, 0,  .75, .75, .75,  1, // Top
+//     0,-1e5 - 2, 0, 1e5,     0, 0, 0, 0,  .75, .75, .75,  1, // Bottom
+//     0, 0, -1e5 - 2.8, 1e5,  0, 0, 0, 0,  .85, .85, .25,  1, // Back 
+//     0, 0, 1e5 + 7.9, 1e5,   0, 0, 0, 0,  0.1, 0.7, 0.7,  1, // Front
+//     -1.3, -1.2, -1.3, 0.8,  0, 0, 0, 0,  .999,.999,.999, 2, // REFLECTIVE
+//     1.3, -1.2, -0.2, 0.8,   0, 0, 0, 0,  .999,.999,.999, 3, // REFRACTIVE
+//     0, 2*0.8, 0, 0.2,       100,100,100,0,  0, 0, 0,   1, // Light
+// };
+
+
+const float pi = 3.141592653589793;
+vec3 rand01(uvec3 x){                   // pseudo-random number generator
+    for (int i=3; i-->0;) x = ((x>>8U)^x.yzx)*1103515245U;
+    return vec3(x)*(1.0/float(0xffffffffU));
+}
+
+bool intersect(Ray r, out int id, out vec3 x, out vec3 n) {
+    float d, inf = 1e20, t = inf, eps = 1e-4;   // intersect ray with scene
+    for (int i = spheres.length(); i-->0;) { 
+    #if 0 // FOR NOW ONLY FLOAT
+        Sphere s = spheres[i];                  // perform intersection test in double precision
+        dvec3 oc = dvec3(s.geo.xyz) - r.o;      // Solve t^2*d.d + 2*t*(o-s).d + (o-s).(o-s)-r^2 = 0 
+        double b=dot(oc,r.d), det=b*b-dot(oc,oc)+s.geo.w*s.geo.w; 
+    #else
+        Sphere s = spheres[i];                  // perform intersection test
+        vec3 oc = s.geo.xyz - r.o;      // Solve t^2*d.d + 2*t*(o-s).d + (o-s).(o-s)-r^2 = 0 
+        float b=dot(oc,r.d), det=b*b-dot(oc,oc)+s.geo.w*s.geo.w; 
+    #endif
+        if (det < 0) continue; else det=sqrt(det); 
+        d = (d = float(b-det))>eps ? d : ((d=float(b+det))>eps ? d : inf);
+        if(d < t) { t=d; id = i; } 
+    } 
+    if (t < inf) {
+        x = r.o + r.d*t;
+        n = normalize(x-spheres[id].geo.xyz);
+    }
+    return t < inf;
+}
+
+void main() {
+    uvec2 imgdim = pushConstants.k_imgdim; 
+    uvec2 samps  = pushConstants.k_samps;
+
+    uvec2 pix = gl_GlobalInvocationID.xy;
+    if (pix.x >= imgdim.x || pix.y >= imgdim.y) return;
+    uint gid = (imgdim.y - pix.y - 1) * imgdim.x + pix.x;
+    
+    //-- define camera
+    Ray cam = Ray(vec3(0, 0.52, 7.4), normalize(vec3(0, -0.06, -1)));
+    vec3 cx = normalize(cross(cam.d, abs(cam.d.y)<0.9 ? vec3(0,1,0) : vec3(0,0,1))), cy = cross(cx, cam.d);
+    const vec2 sdim = vec2(0.036, 0.024);    // sensor size (36 x 24 mm)
+    
+    //-- sample sensor
+    vec2 rnd2 = 2*rand01(uvec3(pix, samps.x)).xy;   // vvv tent filter sample  
+    vec2 tent = vec2(rnd2.x<1 ? sqrt(rnd2.x)-1 : 1-sqrt(2-rnd2.x), rnd2.y<1 ? sqrt(rnd2.y)-1 : 1-sqrt(2-rnd2.y));
+    vec2 s = ((pix + 0.5 * (0.5 + vec2((samps.x/2)%2, samps.x%2) + tent)) / vec2(imgdim) - 0.5) * sdim;
+    vec3 spos = cam.o + cx*s.x + cy*s.y, lc = cam.o + cam.d * 0.035;           // sample on 3d sensor plane
+    vec3 accrad=vec3(0), accmat=vec3(1);        // initialize accumulated radiance and bxdf
+    Ray r = Ray(lc, normalize(lc - spos));      // construct ray
+    
+    //-- loop over ray bounces
+    float emissive = 1;
+    for (int depth = 0, maxDepth = 64; depth < maxDepth; depth++) {   
+        int id = 0;
+        vec3 x, n;
+        if (intersect(r, id, x, n)) {   // intersect ray with scene
+            Sphere obj = spheres[id];
+            vec3 nl = dot(n,r.d) < 0 ? n : -n;
+            accrad += accmat*obj.e.rgb * emissive;      // add emssivie term only if emissive flag is set to 1
+            accmat *= obj.c.xyz;
+            vec3 rnd = rand01(uvec3(pix, samps.x*maxDepth + depth));    // vector of random numbers for sampling
+            float p = max(max(obj.c.x, obj.c.y), obj.c.z);  // max reflectance
+            if (depth > 5) {
+                if (rnd.z >= p) break;  // Russian Roulette ray termination
+                else accmat /= p;       // Energy compensation of surviving rays
+            }
+            //-- Ideal DIFFUSE reflection
+            //if (obj.c.w == 1) { 
+            if ( true ) { // !!! DEBUG !!!
+                // Direct Illumination: Next Event Estimation over any present lights
+                for (int i = spheres.length(); i-->0;) {
+                    Sphere ls = spheres[i];
+                    //if (all(equal(ls.e, vec3(0)))) continue; // skip non-emissive spheres 
+                    //if ( all( ls.e.xyz == vec3( 0.0 ) ) ) continue; // skip non-emissive spheres 
+                    if ( dot( ls.e.xyz, ls.e.xyz ) <= 0.0 ) continue; // skip non-emissive spheres 
+                    vec3 xls, nls, xc = ls.geo.xyz - x;
+                    vec3 sw = normalize(xc), su = normalize(cross((abs(sw.x)>.1 ? vec3(0,1,0) : vec3(1,0,0)), sw)), sv = cross(sw,su);
+                    float cos_a_max = sqrt(float(1 - ls.geo.w*ls.geo.w / dot(xc,xc)));
+                    float cos_a = 1 - rnd.x + rnd.x*cos_a_max, sin_a = sqrt(1 - cos_a*cos_a);
+                    float phi = 2 * pi * rnd.y;
+                    vec3 l = normalize(su*cos(phi)*sin_a + sv*sin(phi)*sin_a + sw*cos_a);   // sampled direction towards light
+                    int idls = 0; 
+                    if (intersect(Ray(x,l), idls, xls, nls) && idls == i) {      // test if shadow ray hits this light source
+                        float omega = 2 * pi * (1-cos_a_max);
+                        accrad += accmat / pi * max(dot(l,nl),0) * ls.e.rgb * omega;   // brdf term obj.c.xyz already in accmat, 1/pi for brdf
+                    }
+                }
+                // Indirect Illumination: cosine-weighted importance sampling
+                float r1 = 2 * pi * rnd.x, r2 = rnd.y, r2s = sqrt(r2);
+                vec3 w = nl, u = normalize((cross(abs(w.x)>0.1 ? vec3(0,1,0) : vec3(1,0,0), w))), v = cross(w,u);
+                r = Ray(x, normalize(u*cos(r1)*r2s + v * sin(r1)*r2s + w * sqrt(1 - r2)));
+                emissive = 0;   // in the next bounce, consider reflective part only!
+            } 
+            //-- Ideal SPECULAR reflection
+            else if (obj.c.w == 2) {   
+                r = Ray(x, reflect(r.d,n));  
+                emissive = 1; 
+            } 
+            //-- Ideal dielectric REFRACTION
+            else if (obj.c.w == 3) {  
+                bool into = n==nl;
+                float cos2t, nc=1, nt=1.5, nnt = into ? nc/nt : nt/nc, ddn = dot(r.d,nl);
+                if ((cos2t = 1 - nnt * nnt*(1 - ddn * ddn)) >= 0) {     // Fresnel reflection/refraction
+                    vec3 tdir = normalize(r.d*nnt - n * ((into ? 1 : -1)*(ddn*nnt + sqrt(cos2t))));
+                    float a = nt - nc, b = nt + nc, R0 = a*a/(b*b), c = 1 - (into ? -ddn : dot(tdir,n));
+                    float Re = R0 + (1 - R0)*c*c*c*c*c, Tr = 1 - Re, P = 0.25 + 0.5*Re, RP = Re/P, TP = Tr/(1-P);
+                    r = Ray(x, rnd.x < P ? reflect(r.d,n) : tdir);      // pick reflection with probability P
+                    accmat *=  rnd.x < P ? RP : TP;                     // energy compensation
+                } else r = Ray(x, reflect(r.d,n));                      // Total internal reflection
+                emissive = 1; 
+            }
+        }
+    }
+
+    if (samps.x == 0) accRad[gid] = vec4(0);    // initialize radiance buffer
+    accRad[gid] += vec4(accrad / samps.y, 0);   // <<< accumulate radiance   vvv write 8bit rgb gamma encoded color
+    if (samps.x == samps.y-1) accRad[gid].xyz = pow(vec3(clamp(accRad[gid].xyz, 0, 1)), vec3(0.45)) * 255 + 0.5;
+
+    //accRad[gid] = vec4( 255.0, 127.0, 0.0, 127.5 );
+}
