@@ -5,6 +5,7 @@
 
 # vulkan binaries for any platform
 mandelbrot-*
+pocketpt-*
 
 *.lib
 *.exp
