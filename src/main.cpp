@@ -2,6 +2,9 @@
 #include <vulkan/vulkan.h>
 
 #include <vector>
+//#include <array>
+#include <algorithm>
+
 #include <string.h>
 #include <assert.h>
 #include <stdexcept>
@@ -9,10 +12,50 @@
 
 #include "lodepng.h" //Used for png encoding.
 
+#define BAIL_ON_BAD_RESULT(result) \
+  if (VK_SUCCESS != (result)) { fprintf(stderr, "Failure at %u %s\n", __LINE__, __FILE__); exit(-1); }
+
+
+#if !defined( MANDELBROT_MODE ) && !defined( PATHTRACER_MODE )
+    #define PATHTRACER_MODE
+#endif
+
+#if defined ( MANDELBROT_MODE )
 const int WIDTH = 3200; // Size of rendered mandelbrot set.
 const int HEIGHT = 2400; // Size of renderered mandelbrot set.
 const int WORKGROUP_SIZE = 32; // Workgroup size in compute shader.
+#elif defined ( PATHTRACER_MODE )
+const int WIDTH = 600; // Size of rendered mandelbrot set.
+const int HEIGHT = 400; // Size of renderered mandelbrot set.
+const int WORKGROUP_SIZE = 16; // Workgroup size in compute shader.
 
+int spp = 20;    // samples per pixel 
+// int resy = 600;    // vertical pixel resolution
+// int resx = resy*3/2;	                    // horiziontal pixel resolution
+int resx = WIDTH;
+int resy = HEIGHT;
+
+float spheres[] = {  // center.xyz, radius  |  emmission.xyz, 0  |  color.rgb, refltype     
+    1e5 - 2.6, 0, 0, 1e5,   0, 0, 0, 0,  .85, .25, .25,  1, // Left (DIFFUSE)
+    1e5 + 2.6, 0, 0, 1e5,   0, 0, 0, 0,  .25, .35, .85,  1, // Right
+    0, 1e5 + 2, 0, 1e5,     0, 0, 0, 0,  .75, .75, .75,  1, // Top
+    0,-1e5 - 2, 0, 1e5,     0, 0, 0, 0,  .75, .75, .75,  1, // Bottom
+    0, 0, -1e5 - 2.8, 1e5,  0, 0, 0, 0,  .85, .85, .25,  1, // Back 
+    0, 0, 1e5 + 7.9, 1e5,   0, 0, 0, 0,  0.1, 0.7, 0.7,  1, // Front
+    -1.3, -1.2, -1.3, 0.8,  0, 0, 0, 0,  .999,.999,.999, 2, // REFLECTIVE
+    1.3, -1.2, -0.2, 0.8,   0, 0, 0, 0,  .999,.999,.999, 3, // REFRACTIVE
+    0, 2*0.8, 0, 0.2,       100,100,100,0,  0, 0, 0,   1, // Light
+    //0,0,0,0,   0,0,0,0,  0,0,0,0,
+};
+
+struct pushConst_t {
+    uint32_t imgdim[2]{ WIDTH, HEIGHT };
+    uint32_t samps[2]{ 0, 20 };
+} pushConst;
+
+#endif
+
+//#if 1
 #ifdef NDEBUG
 const bool enableValidationLayers = false;
 #else
@@ -98,6 +141,12 @@ private:
 
     uint32_t bufferSize; // size of `buffer` in bytes.
 
+#if defined( PATHTRACER_MODE )
+    VkBuffer sphereBuffer;
+    VkDeviceMemory sphereBufferMemory;
+    uint32_t sphereBufferSize = sizeof( spheres ); // size of `buffer` in bytes.
+#endif
+
     std::vector<const char *> enabledLayers;
 
     /*
@@ -129,12 +178,18 @@ public:
         createInstance();
         findPhysicalDevice();
         createDevice();
+        printf( " * before createBuffer()\n" ); fflush( stdout );
         createBuffer();
+        printf( " * before createDescriptorSetLayout()\n" ); fflush( stdout );
         createDescriptorSetLayout();
+        printf( " * before createDescriptorSet()\n" ); fflush( stdout );
         createDescriptorSet();
+        printf( " * before createComputePipeline()\n" ); fflush( stdout );
         createComputePipeline();
+        printf( " * before createCommandBuffer()\n" ); fflush( stdout );
         createCommandBuffer();
 
+        printf( " * before runCommandBuffer()\n" ); fflush( stdout );
         // Finally, run the recorded command buffer.
         runCommandBuffer();
 
@@ -156,17 +211,42 @@ public:
         // We save the data to a vector.
         std::vector<unsigned char> image;
         image.reserve(WIDTH * HEIGHT * 4);
+    #if defined( MANDELBROT_MODE )
+        float floatScaleFactor = 255.0f;
+    #elif defined ( PATHTRACER_MODE )
+        float floatScaleFactor = 1.0f;
+    #endif
         for (int i = 0; i < WIDTH*HEIGHT; i += 1) {
-            image.push_back((unsigned char)(255.0f * (pmappedMemory[i].r)));
-            image.push_back((unsigned char)(255.0f * (pmappedMemory[i].g)));
-            image.push_back((unsigned char)(255.0f * (pmappedMemory[i].b)));
-            image.push_back((unsigned char)(255.0f * (pmappedMemory[i].a)));
-        }
+            image.push_back( (unsigned char) ( floatScaleFactor * ( pmappedMemory[ i ].r ) ) );
+            image.push_back( (unsigned char) ( floatScaleFactor * ( pmappedMemory[ i ].g ) ) );
+            image.push_back( (unsigned char) ( floatScaleFactor * ( pmappedMemory[ i ].b ) ) );
+            //image.push_back( (unsigned char) ( floatScaleFactor * ( pmappedMemory[ i ].a ) ) );
+            image.push_back( 255u );
+        }        
         // Done reading, so unmap.
         vkUnmapMemory(device, bufferMemory);
 
         // Now we save the acquired color data to a .png.
+    #if defined( MANDELBROT_MODE ) // see Makefile        
         unsigned error = lodepng::encode("mandelbrot.png", image, WIDTH, HEIGHT);
+    #elif defined( PATHTRACER_MODE )
+        // due to pinhole cam the image is upside-down and mirrored - undo that!
+        //uint32_t* pRGBA = ( uint32_t* ) image.data();
+        uint32_t* pRGBA = ( uint32_t* ) ( &image[ 0 ] );
+        // for ( int i = 0; i < WIDTH * HEIGHT; i++ ) {
+        //     std::swap( pRGBA[ i ], pRGBA[ ( WIDTH * HEIGHT - 1 ) - i ] );
+        // }
+        for ( int y = 0; y < HEIGHT; y++ ) {
+            for ( int x = 0; x < WIDTH / 2; x++ ) {
+                uint32_t from = x + y * WIDTH;
+                //uint32_t to   = ( WIDTH - 1 ) - x + y * WIDTH;
+                //uint32_t to   = x + ( ( HEIGHT - 1 ) - y ) * WIDTH;
+                uint32_t to   = ( WIDTH - 1 ) - x + ( ( HEIGHT - 1 ) - y ) * WIDTH;
+                std::swap( pRGBA[ from ], pRGBA[ to ] );
+            }
+        }
+        unsigned error = lodepng::encode("pathtracer.png", image, WIDTH, HEIGHT);
+    #endif
         if (error) printf("encoder error %d: %s", error, lodepng_error_text(error));
     }
 
@@ -396,6 +476,15 @@ public:
         /*
         When creating the device, we also specify what queues it has.
         */
+        // typedef struct VkDeviceQueueCreateInfo {
+        //     VkStructureType             sType;
+        //     const void*                 pNext;
+        //     VkDeviceQueueCreateFlags    flags;
+        //     uint32_t                    queueFamilyIndex;
+        //     uint32_t                    queueCount;
+        //     const float*                pQueuePriorities;
+        // } VkDeviceQueueCreateInfo;
+
         VkDeviceQueueCreateInfo queueCreateInfo = {};
         queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
         queueFamilyIndex = getComputeQueueFamilyIndex(); // find queue family with compute capability.
@@ -455,6 +544,8 @@ public:
         in a computer shade later.
         */
 
+       printf( "buffer create!\n" ); fflush( stdout );
+
         VkBufferCreateInfo bufferCreateInfo = {};
         bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
         bufferCreateInfo.size = bufferSize; // buffer size in bytes.
@@ -496,15 +587,55 @@ public:
 
         // Now associate that allocated memory with the buffer. With that, the buffer is backed by actual memory.
         VK_CHECK_RESULT(vkBindBufferMemory(device, buffer, bufferMemory, 0));
+
+
+#if defined( PATHTRACER_MODE )
+        printf( "spherebuffer create!\n" ); fflush( stdout );
+        VkBufferCreateInfo sphereBufferCreateInfo = {};
+        sphereBufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        sphereBufferCreateInfo.size = sphereBufferSize; // buffer size in bytes.
+        sphereBufferCreateInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT; // buffer is used as a storage buffer.
+        bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE; // buffer is exclusive to a single queue family at a time.
+
+        VK_CHECK_RESULT(vkCreateBuffer(device, &sphereBufferCreateInfo, NULL, &sphereBuffer)); // create buffer.
+
+        VkMemoryRequirements sphereBufferMemoryRequirements;
+        vkGetBufferMemoryRequirements(device, sphereBuffer, &sphereBufferMemoryRequirements);
+
+        VkMemoryAllocateInfo sphereBufferAllocateInfo = {};
+        sphereBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        sphereBufferAllocateInfo.allocationSize = sphereBufferMemoryRequirements.size; // specify required memory.
+
+        sphereBufferAllocateInfo.memoryTypeIndex = findMemoryType(
+            sphereBufferMemoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+
+        VK_CHECK_RESULT(vkAllocateMemory(device, &sphereBufferAllocateInfo, NULL, &sphereBufferMemory)); // allocate memory on device.
+
+        // Now associate that allocated memory with the buffer. With that, the buffer is backed by actual memory.
+        VK_CHECK_RESULT(vkBindBufferMemory(device, sphereBuffer, sphereBufferMemory, 0));
+
+        // upload spheres[] data from host to device
+        {
+            void* vpMappedMemory = NULL;
+            // Map the buffer memory, so that we can read from it on the CPU.
+            vkMapMemory(device, sphereBufferMemory, 0, sphereBufferSize, 0, &vpMappedMemory);
+            float* pMappedMemory = (float *)vpMappedMemory;
+            memcpy( pMappedMemory, spheres, sizeof( spheres ) );
+            // Done writing, so unmap.
+            vkUnmapMemory(device, sphereBufferMemory);
+        }
+#endif
+
+        printf( "leaving createBuffer!\n" ); fflush( stdout );
     }
 
     void createDescriptorSetLayout() {
         /*
         Here we specify a descriptor set layout. This allows us to bind our descriptors to
         resources in the shader.
-
         */
 
+    #if defined( MANDELBROT_MODE )
         /*
         Here we specify a binding of type VK_DESCRIPTOR_TYPE_STORAGE_BUFFER to the binding point
         0. This binds to
@@ -526,6 +657,36 @@ public:
 
         // Create the descriptor set layout.
         VK_CHECK_RESULT(vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCreateInfo, NULL, &descriptorSetLayout));
+
+    #elif defined( PATHTRACER_MODE )
+        VkDescriptorSetLayoutBinding descriptorSetLayoutBindings[2] = {
+            {
+                0,
+                VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                1,
+                VK_SHADER_STAGE_COMPUTE_BIT,
+                0
+            },
+            {
+                1,
+                VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                1,
+                VK_SHADER_STAGE_COMPUTE_BIT,
+                0
+            }
+        };
+
+        VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = {
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+            0,
+            0,
+            2,
+            descriptorSetLayoutBindings
+        };
+
+        //GLOBAL VAR!!!! VkDescriptorSetLayout descriptorSetLayout;
+        BAIL_ON_BAD_RESULT(vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCreateInfo, 0, &descriptorSetLayout));
+    #endif
     }
 
     void createDescriptorSet() {
@@ -533,22 +694,40 @@ public:
         So we will allocate a descriptor set here.
         But we need to first create a descriptor pool to do that.
         */
-
+    #if defined( MANDELBROT_MODE ) 
+        VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = {};
+        descriptorPoolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+        descriptorPoolCreateInfo.maxSets = 1; // we only need to allocate one descriptor set from the pool.
         /*
         Our descriptor pool can only allocate a single storage buffer.
         */
         VkDescriptorPoolSize descriptorPoolSize = {};
         descriptorPoolSize.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         descriptorPoolSize.descriptorCount = 1;
-
-        VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = {};
-        descriptorPoolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-        descriptorPoolCreateInfo.maxSets = 1; // we only need to allocate one descriptor set from the pool.
         descriptorPoolCreateInfo.poolSizeCount = 1;
         descriptorPoolCreateInfo.pPoolSizes = &descriptorPoolSize;
+    #elif defined( PATHTRACER_MODE ) 
+        //create a descriptor pool that will hold 2 storage buffers
+        VkDescriptorPoolSize descriptorPoolSize = {
+            VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+            2
+        };
 
+        VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = {
+            VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+            0,
+            0,
+            1,
+            1,
+            &descriptorPoolSize
+        };
+    #endif
+        
+        printf( "before vkCreateDescriptorPool()\n" ); fflush( stdout );
         // create descriptor pool.
         VK_CHECK_RESULT(vkCreateDescriptorPool(device, &descriptorPoolCreateInfo, NULL, &descriptorPool));
+
+        printf( "after vkCreateDescriptorPool()\n" ); fflush( stdout );
 
         /*
         With the pool allocated, we can now allocate the descriptor set.
@@ -559,19 +738,23 @@ public:
         descriptorSetAllocateInfo.descriptorSetCount = 1; // allocate a single descriptor set.
         descriptorSetAllocateInfo.pSetLayouts = &descriptorSetLayout;
 
+
+        printf( "before vkAllocateDescriptorSets()\n" ); fflush( stdout );
         // allocate descriptor set.
         VK_CHECK_RESULT(vkAllocateDescriptorSets(device, &descriptorSetAllocateInfo, &descriptorSet));
+        printf( "after vkAllocateDescriptorSets()\n" ); fflush( stdout );
 
         /*
         Next, we need to connect our actual storage buffer with the descrptor.
         We use vkUpdateDescriptorSets() to update the descriptor set.
         */
 
+    #if defined( MANDELBROT_MODE )
         // Specify the buffer to bind to the descriptor.
         VkDescriptorBufferInfo descriptorBufferInfo = {};
         descriptorBufferInfo.buffer = buffer;
         descriptorBufferInfo.offset = 0;
-        descriptorBufferInfo.range = bufferSize;
+        descriptorBufferInfo.range = bufferSize; // VK_WHOLE_SIZE
 
         VkWriteDescriptorSet writeDescriptorSet = {};
         writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -581,8 +764,71 @@ public:
         writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; // storage buffer.
         writeDescriptorSet.pBufferInfo = &descriptorBufferInfo;
 
+        printf( "before vkUpdateDescriptorSets MANDELBROT_MODE\n" ); fflush( stdout );
+
         // perform the update of the descriptor set.
         vkUpdateDescriptorSets(device, 1, &writeDescriptorSet, 0, NULL);
+
+    #elif defined( PATHTRACER_MODE )
+
+        printf( "before binding buffers to descriptors\n" ); fflush( stdout );
+        // Specify the buffer to bind to the descriptor.
+        VkDescriptorBufferInfo descriptorBufferInfo = {};
+        descriptorBufferInfo.buffer = buffer;
+        descriptorBufferInfo.offset = 0;
+        descriptorBufferInfo.range = VK_WHOLE_SIZE;//bufferSize;
+
+        VkDescriptorBufferInfo descriptorSphereBufferInfo = {};
+        descriptorSphereBufferInfo.buffer = sphereBuffer;
+        descriptorSphereBufferInfo.offset = 0;
+        descriptorSphereBufferInfo.range = VK_WHOLE_SIZE;//sphereBufferSize;
+
+        // VkDescriptorBufferInfo descriptorBufferInfo = {
+        //     buffer,
+        //     0,
+        //     VK_WHOLE_SIZE
+        // };
+
+        // VkDescriptorBufferInfo descriptorSphereBufferInfo = {
+        //     sphereBuffer,
+        //     0,
+        //     VK_WHOLE_SIZE
+        // };
+
+        VkWriteDescriptorSet writeDescriptorSet[2] = {
+            {
+                VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                0,
+                descriptorSet,
+                0,
+                0,
+                1,
+                VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                0,
+                &descriptorBufferInfo,
+                0
+            },
+            {
+                VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                0,
+                descriptorSet,
+                1,
+                0,
+                1,
+                VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                0,
+                &descriptorSphereBufferInfo,
+                0
+            }
+        };
+
+        printf( "before vkUpdateDescriptorSets PATHTRACER_MODE\n" ); fflush( stdout );
+
+        // perform the update of the descriptor set.
+        vkUpdateDescriptorSets(device, 2, writeDescriptorSet, 0, 0);
+    #endif
+
+        printf( "after vkUpdateDescriptorSets\n" ); fflush( stdout );
     }
 
     // Read file into array of bytes, and cast to uint32_t*, then return.
@@ -624,11 +870,15 @@ public:
         Create a shader module. A shader module basically just encapsulates some shader code.
         */
         uint32_t filelength;
+    #if defined ( MANDELBROT_MODE )        
         // the code in mandelbrot.spv can be created by running the following command in the 'shaders' folder:
         // $(VULKAN_SDK)bin/glslangValidator -V mandelbrot.comp -o mandelbrot.spv
         // NOTE: if the instructions in mac-vulkan-setup-guide.md were followed, $(VULKAN_SDK)bin/ is
         //       actually part of the path, so you can just type 'glslangValidator -V mandelbrot.comp -o mandelbrot.spv'
         uint32_t* code = readFile(filelength, "shaders/mandelbrot.spv");
+    #elif defined( PATHTRACER_MODE )
+        uint32_t* code = readFile(filelength, "shaders/pathTracer.spv");
+    #endif
         VkShaderModuleCreateInfo createInfo = {};
         createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
         createInfo.pCode = code;
@@ -655,7 +905,11 @@ public:
 		VkPushConstantRange pushConstantRange{};
 		pushConstantRange.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
 		pushConstantRange.offset = 0;
-		pushConstantRange.size = 4 * sizeof( float );
+        #if defined( MANDELBROT_MODE )
+		    pushConstantRange.size = 4 * sizeof( float );
+        #elif defined( PATHTRACER_MODE )
+            pushConstantRange.size = sizeof( pushConst_t );
+        #endif
 
         /*
         The pipeline layout allows the pipeline to access descriptor sets.
@@ -728,13 +982,10 @@ public:
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &descriptorSet, 0, NULL);
 
+    #if defined( MANDELBROT_MODE ) // see Makefile
         float kColor[4]{ 0.1f, 0.7f, 0.6f, 0.0f };
-        // struct pushConst_t {
-        //     float kColor1[3]{ 0.1f, 0.7f, 0.6f };
-        //     float kColor2[3]{ 0.9f, 0.1f, 0.3f };
-        // } pushConst;
+        //float kColor[4]{ 0.9f, 0.1f, 0.3f, 0.0f };
         vkCmdPushConstants( commandBuffer, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof( float ) * 4, kColor );
-        //vkCmdPushConstants( commandBuffer, pipelineLayout, VK_PIPELINE_BIND_POINT_COMPUTE, 0, sizeof( float ) * 3, kColor );
 
         /*
         Calling vkCmdDispatch basically starts the compute pipeline, and executes the compute shader.
@@ -742,6 +993,30 @@ public:
         If you are already familiar with compute shaders from OpenGL, this should be nothing new to you.
         */
         vkCmdDispatch(commandBuffer, (uint32_t)ceil(WIDTH / float(WORKGROUP_SIZE)), (uint32_t)ceil(HEIGHT / float(WORKGROUP_SIZE)), 1);
+
+    #elif defined( PATHTRACER_MODE )
+        printf( "\n   ### entering spp loop ###\n\n" ); fflush( stdout );
+        for ( int32_t sampNum = 0; sampNum < spp; sampNum++ ) {
+
+            pushConst.samps[ 0 ] = sampNum;
+
+            printf( "pushConst.imgdim[0] = %u, pushConst.imgdim[1] = %u, pushConst.samps[0] = %u, pushConst.samps[1] = %u\n", 
+                pushConst.imgdim[0], pushConst.imgdim[1],
+                pushConst.samps[0], pushConst.samps[1] ); fflush( stdout );
+
+            
+            vkCmdPushConstants( commandBuffer, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof( pushConst_t ), &pushConst );
+
+            /*
+            Calling vkCmdDispatch basically starts the compute pipeline, and executes the compute shader.
+            The number of workgroups is specified in the arguments.
+            If you are already familiar with compute shaders from OpenGL, this should be nothing new to you.
+            */
+            vkCmdDispatch(commandBuffer, (uint32_t)ceil(WIDTH / float(WORKGROUP_SIZE)), (uint32_t)ceil(HEIGHT / float(WORKGROUP_SIZE)), 1);
+        }
+        printf( "\n   ### leaving spp loop ###\n\n" ); fflush( stdout );
+    #endif
+
 
         VK_CHECK_RESULT(vkEndCommandBuffer(commandBuffer)); // end recording commands.
     }
@@ -797,6 +1072,10 @@ public:
 
         vkFreeMemory(device, bufferMemory, NULL);
         vkDestroyBuffer(device, buffer, NULL);
+    #if defined( PATHTRACER_MODE )
+        vkFreeMemory(device, sphereBufferMemory, NULL);
+        vkDestroyBuffer(device, sphereBuffer, NULL);
+    #endif
         vkDestroyShaderModule(device, computeShaderModule, NULL);
         vkDestroyDescriptorPool(device, descriptorPool, NULL);
         vkDestroyDescriptorSetLayout(device, descriptorSetLayout, NULL);
@@ -808,7 +1087,14 @@ public:
     }
 };
 
-int main() {
+int main( int argc, char* argv[] ) {
+
+#if defined( PATHTRACER_MODE )
+    // spp = argc>1 ? atoi(argv[1]) : 100;    // samples per pixel 
+    // resy = argc>2 ? atoi(argv[2]) : 600;    // vertical pixel resolution
+    // resx = resy*3/2;	                    // horiziontal pixel resolution
+#endif
+
     ComputeApplication app;
 
     try {
