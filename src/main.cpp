@@ -29,7 +29,7 @@ const int WIDTH = 600; // Size of rendered mandelbrot set.
 const int HEIGHT = 400; // Size of renderered mandelbrot set.
 const int WORKGROUP_SIZE = 16; // Workgroup size in compute shader.
 
-int spp = 20;    // samples per pixel 
+constexpr int spp = 500;    // samples per pixel 
 // int resy = 600;    // vertical pixel resolution
 // int resx = resy*3/2;	                    // horiziontal pixel resolution
 int resx = WIDTH;
@@ -50,7 +50,7 @@ float spheres[] = {  // center.xyz, radius  |  emmission.xyz, 0  |  color.rgb, r
 
 struct pushConst_t {
     uint32_t imgdim[2]{ WIDTH, HEIGHT };
-    uint32_t samps[2]{ 0, 20 };
+    uint32_t samps[2]{ 0, spp };
 } pushConst;
 
 #endif
@@ -493,13 +493,17 @@ public:
         device in the list. But in a real and serious application, those limitations should certainly be taken into account.
 
         */
-        for (VkPhysicalDevice device : devices) {
-            if (true) { // As above stated, we do no feature checks, so just accept.
-                physicalDevice = device;
-                break;
-            }
-        }
+        
+        // for (VkPhysicalDevice device : devices) {
+        //     if (true) { // As above stated, we do no feature checks, so just accept.
+        //         physicalDevice = device;
+        //         break;
+        //     }
+        // }
+        
+        physicalDevice = devices[ 0 ];
         //physicalDevice = devices[ 1 ]; // chose AMD GPU
+
         // for ( const VkPhysicalDevice& device : devices ) {
         //     VkPhysicalDeviceFeatures physicalDeviceFeatures = {};
         //     physicalDeviceFeatures.shaderFloat64 = VkBool32{ true };
@@ -567,6 +571,10 @@ public:
 
         // Specify any desired device features here. We do not need any for this application, though.
         VkPhysicalDeviceFeatures deviceFeatures = {};
+
+        // https://vulkan-tutorial.com/Vertex_buffers/Vertex_input_description
+        // Shader requires VkPhysicalDeviceFeatures::shaderFloat64 but is not enabled on the device
+        // deviceFeatures.shaderFloat64 = VK_TRUE; // not supported on macOS where Vulkan is run on Metal through MoltenVk, since there is no double in Metal!
 
         deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
         deviceCreateInfo.enabledLayerCount = enabledLayers.size();  // need to specify validation layers here as well.
