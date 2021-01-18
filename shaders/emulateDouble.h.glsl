@@ -59,20 +59,6 @@ vec2 twoDiff( float a, float b ) {
     return vec2( s, e );
 }
 
-// def _two_difference(x, y):
-//     r = x - y
-//     t = r - x
-//     e = (x - (r - t)) - (y + t)
-//     return r, e
-
-// vec2 twoDiff( float x, float y ) {
-//     float r = x - y;
-//     float t = r - x;
-//     float e = ( x - ( r - t ) ) - ( y + t );
-//     return vec2( r, e );
-// }
-
-
 vec2 df64_add( vec2 a, vec2 b ) {
     vec2 s, t;
     s = twoSum( a.x, b.x );
@@ -112,46 +98,6 @@ vec2 df64_mult( vec2 a, vec2 b ) {
     return p;
 }
 
-// ### subtraction ###
-// a - b 
-// vec2 df64_sub( vec2 a, vec2 b ) {
-//     vec2 minusOne_df64 = df64_from_f32( -1.0 );
-//     vec2 minusB = df64_mul( b, minusOne_df64 );
-//     return df64_add( a, minusB );
-// }
-
-
-// ### division ###
-// float2 df64_div( vec2 b, vec2 a ) {
-//     float xn = 1.0 / a.x;
-//     float yn = b.x * xn;
-//     //float diff = ( df64_diff( b, df64_mult( a, yn ) ) ).x
-//     float diff = df64_diff( b, df64_mult( a, f64_from_f32( yn ) ) ).x;
-//     vec2 prod = twoProd( xn, diff );
-
-//     return df64_add( yn, prod );
-// }   
-
-
-// def sqrt(self):
-//         if self.x == 0.0:
-//             return _zero
-//         r = sqrt(self.x)
-//         s, f = _two_product(r, r)
-//         e = (self.x - s - f + self.y)*0.5/r
-//         r, e = _two_sum_quick(r, e)
-//         return DoubleDouble(r, e)
-
-// vec2 df64_sqrt( vec2 a ) {
-//     if ( a.x == 0.0 ) { return df64_from_f32( 0.0 ); }
-//     float r = sqrt( a.x );
-//     vec2 sf = twoProd( r, r );
-//     float s = sf.x;
-//     float f = sf.y;
-//     float e = ( a.x - s - f + a.x ) * 0.5 / r;
-//     return quickTwoSum( r, e ); 
-// }
-
 vec2 df64_sqrt( vec2 a ) {
     float xn = inversesqrt( a.x );
     float yn = a.x * xn;
@@ -176,15 +122,33 @@ vec2 df64_dot3( vec2 ax_df64, vec2 ay_df64, vec2 az_df64, vec2 bx_df64, vec2 by_
     return df64_add( df64_add( xMul_df64, yMul_df64 ), zMul_df64 );
 }
 
-// convert f32 vec3s to df64 and then perform dot with df64 precision
-vec2 df64_dot3( vec3 a_f32, vec3 b_f32 ) {
-    vec2 ax_df64 = df64_from_f32( a_f32.x );
-    vec2 ay_df64 = df64_from_f32( a_f32.y );
-    vec2 az_df64 = df64_from_f32( a_f32.z );
 
-    vec2 bx_df64 = df64_from_f32( b_f32.x );
-    vec2 by_df64 = df64_from_f32( b_f32.y );
-    vec2 bz_df64 = df64_from_f32( b_f32.z );
 
-    return df64_dot3( ax_df64, ay_df64, az_df64, bx_df64, by_df64, bz_df64 );
-}
+//////////////////////////////////////////////////////////////////////////////////
+
+// http://mrob.com/pub/math/f161.html
+
+// double-double in CUDA
+// https://gist.github.com/seibert/5914108
+// https://gist.github.com/advanpix/68dd7e653e4fea4d97ab
+
+// https://web.archive.org/web/20120714073115/http://homepages.math.uic.edu/~jan/mcs572/quad_double_cuda.pdf
+
+// https://www.researchgate.net/publication/220706912_Supporting_extended_precision_on_graphics_processors
+
+//////////////////////////////////////////////////////////////////////////////////
+
+//#if 0
+
+// https://www.davidhbailey.com/dhbpapers/qd.pdf
+// https://web.archive.org/web/20110807003725/http://crd.lbl.gov/~dhbailey/mpdist/
+// https://web.archive.org/web/20060118031825/http://crd.lbl.gov/~dhbailey/mpdist/
+
+// https://www.researchgate.net/publication/2910134_Algorithms_for_Quad-Double_Precision_Floating_Point_Arithmetic
+
+
+/********** Divisions **********/
+
+
+//////////////////// ####################### ///////////////////
+
