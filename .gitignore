@@ -17,6 +17,8 @@ pocketpt-*
 a.out
 *_help.txt
 
+*.comp.preprocessed
+
 *.ppm
 *.pfm
 *.png
