@@ -1,5 +1,20 @@
 #version 460
+
 #extension GL_ARB_separate_shader_objects : enable
+
+// #extension GL_ARB_gpu_shader_int64 : enable
+
+
+//https://www.shadertoy.com/view/3tdcRr
+//https://www.shadertoy.com/view/4lfcDr
+/*
+    void
+    mainImage(out vec4 fragColor, in vec2 fragCoord)
+    {
+
+        fragColor = vec4(0.5, 0.0, 0.0, 1.0);
+    }
+*/
 
 // preprocess with 'glslc -E' before compiling into spir-v
 //!!! 
@@ -61,7 +76,9 @@ bool intersect(Ray r, out int id, out vec3 x, out vec3 n) {
     for (int i = spheres.length(); i-->0;) { 
         Sphere s = spheres[i];                  
 
-    #if 1 // perform intersection test in float-float (df64) precision - SHOUDL WORK, BUT DOESN'T
+    //int64_t i64 = id; if ( i64 == 0 ) return false;
+
+    #if 1 // perform intersection test in float-float (df64) precision - WORKS, but still lacking precision :-(
 
         vec2 sGeoX_df64 = df64_from_f32( s.geo.x );
         vec2 sGeoY_df64 = df64_from_f32( s.geo.y );
@@ -75,7 +92,6 @@ bool intersect(Ray r, out int id, out vec3 x, out vec3 n) {
         vec2 ocY_df64 = df64_add( sGeoY_df64, neg_roY_df64 );
         vec2 ocZ_df64 = df64_add( sGeoZ_df64, neg_roZ_df64 );
 
-
         vec2 rdX_df64 = df64_from_f32( r.d.x );
         vec2 rdY_df64 = df64_from_f32( r.d.y );
         vec2 rdZ_df64 = df64_from_f32( r.d.z );
@@ -85,7 +101,6 @@ bool intersect(Ray r, out int id, out vec3 x, out vec3 n) {
             rdX_df64, rdY_df64, rdZ_df64 );
         
         vec2 sGeoW_df64 = df64_from_f32( s.geo.w );
-        vec2 squared_sGeoW_df64 = df64_mult( sGeoW_df64, sGeoW_df64 );
 
         vec2 det_df64 = df64_add(
             df64_add ( // b*b-dot(oc,oc)
@@ -93,7 +108,7 @@ bool intersect(Ray r, out int id, out vec3 x, out vec3 n) {
                 df64_mult( 
                     df64_dot3( ocX_df64, ocY_df64, ocZ_df64, ocX_df64, ocY_df64, ocZ_df64 ), // dot(oc,oc)
                     df64_from_f32( -1.0 ) ) ),
-            squared_sGeoW_df64 );
+            df64_mult( sGeoW_df64, sGeoW_df64 ) );
 
         if ( df64_lt( det_df64, df64_from_f32( 0.0 ) ) ) { continue; } else det_df64 = df64_sqrt( det_df64 );
 
@@ -103,11 +118,8 @@ bool intersect(Ray r, out int id, out vec3 x, out vec3 n) {
 
     #elif 0 // => perform intersection test in double precision
         dvec3 oc = dvec3(s.geo.xyz) - r.o;      // Solve t^2*d.d + 2*t*(o-s).d + (o-s).(o-s)-r^2 = 0 
-
         double b=dot(oc,r.d), det=b*b-dot(oc,oc)+s.geo.w*s.geo.w; 
-        
         if (det < 0) continue; else det=sqrt(det); 
-        
         d = (d = float(b-det))>eps ? d : ((d=float(b+det))>eps ? d : inf);
     #else // perform intersection test in single precision
         vec3 oc = s.geo.xyz - r.o;      // Solve t^2*d.d + 2*t*(o-s).d + (o-s).(o-s)-r^2 = 0 
