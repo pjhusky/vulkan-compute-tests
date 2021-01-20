@@ -2,8 +2,11 @@
 
 #extension GL_ARB_separate_shader_objects : enable
 
-// #extension GL_ARB_gpu_shader_int64 : enable
+#extension GL_ARB_gpu_shader_int64 : enable
+#extension GL_ARB_gpu_shader_fp64 : enable
 
+precision highp int;
+precision highp float;
 
 //https://www.shadertoy.com/view/3tdcRr
 //https://www.shadertoy.com/view/4lfcDr
@@ -71,67 +74,139 @@ vec3 rand01(uvec3 x){                   // pseudo-random number generator
 
 
 
-bool intersect(Ray r, out int id, out vec3 x, out vec3 n) {
-    float d, inf = 1e20, t = inf, eps = 1e-4;   // intersect ray with scene
+bool intersect(Ray ray, out int id, out highp vec3 x, out highp vec3 n) {
+    highp float d, inf = 1e20;
+    highp float t = inf, eps = 1e-4;   // intersect ray with scene
     for (int i = spheres.length(); i-->0;) { 
-        Sphere s = spheres[i];                  
+        Sphere sphere = spheres[i];                  
 
-    //int64_t i64 = id; if ( i64 == 0 ) return false;
+    const float maxLenForFloatCalc = 500.0f;
+    //const float maxLenForFloatCalc = 40000.0f;
+    #if ( USE_NATIVE_FP64 == TRUE ) // => perform intersection test in double precision NOTE: won't work on MacOS over Vulkan->MoltenVK->Metal
+        // need double precision?
+        if ( sphere.geo.w > maxLenForFloatCalc || 
+            dot( sphere.geo.xyz, sphere.geo.xyz ) > maxLenForFloatCalc * maxLenForFloatCalc ||
+            dot( ray.o, ray.o ) > maxLenForFloatCalc * maxLenForFloatCalc ||
+            dot( sphere.geo.xyz - ray.o, sphere.geo.xyz - ray.o ) > maxLenForFloatCalc * maxLenForFloatCalc ) {
+    
+            dvec3 oc = dvec3(sphere.geo.xyz) - ray.o;      // Solve t^2*d.d + 2*t*(o-s).d + (o-s).(o-s)-r^2 = 0 
+            double b=dot(oc,ray.d), det=b*b-dot(oc,oc)+sphere.geo.w*sphere.geo.w; 
+            if (det < 0) continue; else det=sqrt(det); 
+            d = (d = float(b-det))>eps ? d : ((d=float(b+det))>eps ? d : inf);
+        } else
+    #elif ( DF64_F32_F32 == TRUE ) // perform intersection test in float-float (df64) precision - WORKS, but still lacking precision :-(
+        // need double precision?
+        if ( sphere.geo.w > maxLenForFloatCalc || 
+            dot( sphere.geo.xyz, sphere.geo.xyz ) > maxLenForFloatCalc * maxLenForFloatCalc ||
+            dot( ray.o, ray.o ) > maxLenForFloatCalc * maxLenForFloatCalc ||
+            dot( sphere.geo.xyz - ray.o, sphere.geo.xyz - ray.o ) > maxLenForFloatCalc * maxLenForFloatCalc ) {
 
-    #if 1 // perform intersection test in float-float (df64) precision - WORKS, but still lacking precision :-(
+            highp vec2 sGeoX_df64 = df64_from_f32( sphere.geo.x );
+            highp vec2 sGeoY_df64 = df64_from_f32( sphere.geo.y );
+            highp vec2 sGeoZ_df64 = df64_from_f32( sphere.geo.z );
 
-        vec2 sGeoX_df64 = df64_from_f32( s.geo.x );
-        vec2 sGeoY_df64 = df64_from_f32( s.geo.y );
-        vec2 sGeoZ_df64 = df64_from_f32( s.geo.z );
+            highp vec2 neg_roX_df64 = df64_from_f32( -ray.o.x );
+            highp vec2 neg_roY_df64 = df64_from_f32( -ray.o.y );
+            highp vec2 neg_roZ_df64 = df64_from_f32( -ray.o.z );
 
-        vec2 neg_roX_df64 = df64_from_f32( -r.o.x );
-        vec2 neg_roY_df64 = df64_from_f32( -r.o.y );
-        vec2 neg_roZ_df64 = df64_from_f32( -r.o.z );
+            highp vec2 ocX_df64 = df64_add( sGeoX_df64, neg_roX_df64 );
+            highp vec2 ocY_df64 = df64_add( sGeoY_df64, neg_roY_df64 );
+            highp vec2 ocZ_df64 = df64_add( sGeoZ_df64, neg_roZ_df64 );
 
-        vec2 ocX_df64 = df64_add( sGeoX_df64, neg_roX_df64 );
-        vec2 ocY_df64 = df64_add( sGeoY_df64, neg_roY_df64 );
-        vec2 ocZ_df64 = df64_add( sGeoZ_df64, neg_roZ_df64 );
+            highp vec2 rdX_df64 = df64_from_f32( ray.d.x );
+            highp vec2 rdY_df64 = df64_from_f32( ray.d.y );
+            highp vec2 rdZ_df64 = df64_from_f32( ray.d.z );
 
-        vec2 rdX_df64 = df64_from_f32( r.d.x );
-        vec2 rdY_df64 = df64_from_f32( r.d.y );
-        vec2 rdZ_df64 = df64_from_f32( r.d.z );
+            highp vec2 b_df64 = df64_dot3( 
+                ocX_df64, ocY_df64, ocZ_df64, 
+                rdX_df64, rdY_df64, rdZ_df64 );
+            
+            highp vec2 sGeoW_df64 = df64_from_f32( sphere.geo.w );
 
-        vec2 b_df64 = df64_dot3( 
-            ocX_df64, ocY_df64, ocZ_df64, 
-            rdX_df64, rdY_df64, rdZ_df64 );
-        
-        vec2 sGeoW_df64 = df64_from_f32( s.geo.w );
+            highp vec2 det_df64 = df64_add(
+                df64_add ( // b*b-dot(oc,oc)
+                    df64_mult( b_df64, b_df64 ), // b*b
+                    df64_mult( 
+                        df64_dot3( ocX_df64, ocY_df64, ocZ_df64, ocX_df64, ocY_df64, ocZ_df64 ), // dot(oc,oc)
+                        df64_from_f32( -1.0 ) ) ),
+                df64_mult( sGeoW_df64, sGeoW_df64 ) );
 
-        vec2 det_df64 = df64_add(
-            df64_add ( // b*b-dot(oc,oc)
-                df64_mult( b_df64, b_df64 ), // b*b
-                df64_mult( 
-                    df64_dot3( ocX_df64, ocY_df64, ocZ_df64, ocX_df64, ocY_df64, ocZ_df64 ), // dot(oc,oc)
-                    df64_from_f32( -1.0 ) ) ),
-            df64_mult( sGeoW_df64, sGeoW_df64 ) );
+            if ( df64_lt( det_df64, df64_from_f32( 0.0 ) ) ) { continue; } else det_df64 = df64_sqrt( det_df64 );
 
-        if ( df64_lt( det_df64, df64_from_f32( 0.0 ) ) ) { continue; } else det_df64 = df64_sqrt( det_df64 );
+            highp float bMinusDet_f32 = df64_to_f32( df64_add( b_df64, df64_mult( det_df64, df64_from_f32( -1.0 ) ) ) );
+            highp float bPlusDet_f32 = df64_to_f32( df64_add( b_df64, det_df64 ) );
+            d = ( d = bMinusDet_f32 )>eps ? d : ( ( d = bPlusDet_f32 ) > eps ? d : inf );
+        } else
+    #elif ( FP_64_64_R128 == TRUE )
+        // need double precision?
+        if ( sphere.geo.w > maxLenForFloatCalc || 
+             dot( sphere.geo.xyz, sphere.geo.xyz ) > maxLenForFloatCalc * maxLenForFloatCalc ||
+             dot( ray.o, ray.o ) > maxLenForFloatCalc * maxLenForFloatCalc ||
+             dot( sphere.geo.xyz - ray.o, sphere.geo.xyz - ray.o ) > maxLenForFloatCalc * maxLenForFloatCalc ) {
 
-        float bMinusDet_f32 = df64_to_f32( df64_add( b_df64, df64_mult( det_df64, df64_from_f32( -1.0 ) ) ) );
-        float bPlusDet_f32 = df64_to_f32( df64_add( b_df64, det_df64 ) );
-        d = ( d = bMinusDet_f32 )>eps ? d : ( ( d = bPlusDet_f32 ) > eps ? d : inf );
+            R128 sphereGeoX_r128; r128FromFloat( sphereGeoX_r128, sphere.geo.x );
+            R128 sphereGeoY_r128; r128FromFloat( sphereGeoY_r128, sphere.geo.y );
+            R128 sphereGeoZ_r128; r128FromFloat( sphereGeoZ_r128, sphere.geo.z );
 
-    #elif 0 // => perform intersection test in double precision
-        dvec3 oc = dvec3(s.geo.xyz) - r.o;      // Solve t^2*d.d + 2*t*(o-s).d + (o-s).(o-s)-r^2 = 0 
-        double b=dot(oc,r.d), det=b*b-dot(oc,oc)+s.geo.w*s.geo.w; 
-        if (det < 0) continue; else det=sqrt(det); 
-        d = (d = float(b-det))>eps ? d : ((d=float(b+det))>eps ? d : inf);
-    #else // perform intersection test in single precision
-        vec3 oc = s.geo.xyz - r.o;      // Solve t^2*d.d + 2*t*(o-s).d + (o-s).(o-s)-r^2 = 0 
-        float b=dot(oc,r.d), det=b*b-dot(oc,oc)+s.geo.w*s.geo.w; 
-        if (det < 0) continue; else det=sqrt(det); 
-        d = (d = float(b-det))>eps ? d : ((d=float(b+det))>eps ? d : inf);
-    #endif        
+            R128 rayOriginX_r128; r128FromFloat( rayOriginX_r128, ray.o.x );
+            R128 rayOriginY_r128; r128FromFloat( rayOriginY_r128, ray.o.y );
+            R128 rayOriginZ_r128; r128FromFloat( rayOriginZ_r128, ray.o.z );
+
+            R128 ocX_r128; r128Sub( ocX_r128, sphereGeoX_r128, rayOriginX_r128 );
+            R128 ocY_r128; r128Sub( ocY_r128, sphereGeoY_r128, rayOriginY_r128 );
+            R128 ocZ_r128; r128Sub( ocZ_r128, sphereGeoZ_r128, rayOriginZ_r128 );
+
+            R128 rayDirX_r128; r128FromFloat( rayDirX_r128, ray.d.x );
+            R128 rayDirY_r128; r128FromFloat( rayDirY_r128, ray.d.y );
+            R128 rayDirZ_r128; r128FromFloat( rayDirZ_r128, ray.d.z );
+
+            R128 b_r128;
+            r128Dot3( b_r128, 
+                      ocX_r128, ocY_r128, ocZ_r128, 
+                      rayDirX_r128, rayDirY_r128, rayDirZ_r128 );
+
+            R128 det_r128;
+            R128 bb_r128;
+            r128Mul( bb_r128, b_r128, b_r128 );
+            R128 dotOcOc_r128;
+            r128Dot3( dotOcOc_r128, 
+                      ocX_r128, ocY_r128, ocZ_r128,
+                      ocX_r128, ocY_r128, ocZ_r128 );
+            r128Sub( det_r128, bb_r128, dotOcOc_r128 );
+            R128 sphereGeoW_r128; r128FromFloat( sphereGeoW_r128, sphere.geo.w );
+            R128 sphereGeoW2_r128; r128Mul( sphereGeoW2_r128, sphereGeoW_r128, sphereGeoW_r128 );
+            R128 detAdd_r128;
+            r128Add( detAdd_r128, det_r128, sphereGeoW2_r128 );
+
+            float det;
+            if ( r128Cmp( detAdd_r128, R128_zero ) < 0 ) { continue; } else {
+
+                r128Sqrt( det_r128, detAdd_r128 );
+
+                R128 eps_r128; r128FromFloat( eps_r128, eps );
+                R128 d_r128;
+                r128Sub( d_r128, b_r128, det_r128 );
+                if ( r128Cmp( d_r128, eps_r128 ) <= 0 ) {
+                    r128Add( d_r128, b_r128, det_r128 );
+                    if ( r128Cmp( d_r128, eps_r128 ) <= 0 ) {
+                        r128Copy( d_r128, R128_max );
+                    }
+                }
+                d = r128ToFloat( d_r128 );
+            }
+        } else 
+    #endif // perform intersection test in single precision
+        {
+            vec3 oc = sphere.geo.xyz - ray.o;      // Solve t^2*d.d + 2*t*(o-s).d + (o-s).(o-s)-r^2 = 0 
+            float b=dot(oc,ray.d), det=b*b-dot(oc,oc)+sphere.geo.w*sphere.geo.w; 
+            if (det < 0) continue; else det=sqrt(det); 
+            d = (d = float(b-det))>eps ? d : ((d=float(b+det))>eps ? d : inf);
+        }
         if(d < t) { t=d; id = i; } 
 
     } 
     if (t < inf) {
-        x = r.o + r.d*t;
+        x = ray.o + ray.d*t;
         n = normalize(x-spheres[id].geo.xyz);
     }
     return t < inf;

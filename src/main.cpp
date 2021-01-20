@@ -506,8 +506,24 @@ public:
 
         // for ( const VkPhysicalDevice& device : devices ) {
         //     VkPhysicalDeviceFeatures physicalDeviceFeatures = {};
-        //     physicalDeviceFeatures.shaderFloat64 = VkBool32{ true };
+        //     //physicalDeviceFeatures.shaderFloat64 = VkBool32{ true };
+        //     vkGetPhysicalDeviceFeatures( device, &physicalDeviceFeatures );
+        //     printf( "shaderInt64 is%s supported\n", ( physicalDeviceFeatures.shaderInt64 == VK_TRUE ) ? "" : " not" );        
         // }
+
+        // for ( const VkPhysicalDevice& device : devices ) {
+        //     VkPhysicalDeviceFeatures physicalDeviceFeatures = {};
+        //     physicalDeviceFeatures.shaderInt64 = VkBool32{ true };
+        // }
+        
+        // VkPhysicalDeviceFeatures* pPhysicalDeviceFeatures = nullptr;
+        // vkGetPhysicalDeviceFeatures( physicalDevice, pPhysicalDeviceFeatures );
+        // pPhysicalDeviceFeatures->shaderInt64 = true;
+
+        VkPhysicalDeviceFeatures physicalDeviceFeatures = {};
+        vkGetPhysicalDeviceFeatures( physicalDevice, &physicalDeviceFeatures );
+        printf( "shaderInt64 is%s supported\n", ( physicalDeviceFeatures.shaderInt64 == VK_TRUE ) ? "" : " not" );        
+                
     }
 
     // Returns the index of a queue family that supports compute operations.
