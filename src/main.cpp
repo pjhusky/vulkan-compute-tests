@@ -35,17 +35,28 @@ constexpr int spp = 500;    // samples per pixel
 int resx = WIDTH;
 int resy = HEIGHT;
 
+float planes[] = { // normal.xyz, distToOrigin  |  emmission.xyz, 0  |  color.rgb, refltype     
+    -1.0f,  +0.0f,  +0.0f,  +2.6f,      0, 0, 0, 0,     .85, .25, .25,  1, // Left
+    +1.0f,  +0.0f,  +0.0f,  +2.6f,      0, 0, 0, 0,     .25, .35, .85,  1, // Right
+    +0.0f,  +1.0f,  +0.0f,  +2.0f,      0, 0, 0, 0,     .75, .75, .75,  1, // Top
+    +0.0f,  -1.0f,  +0.0f,  +2.0f,      0, 0, 0, 0,     .75, .75, .75,  1, // Bottom
+    +0.0f,  +0.0f,  -1.0f,  +2.8f,      0, 0, 0, 0,     .85, .85, .25,  1, // Back
+    +0.0f,  +0.0f,  +1.0f,  +7.9f,      0, 0, 0, 0,     0.1, 0.7, 0.7,  1, // Front
+
+    // 1,0,0,1000,    0,0,0,0,     1,1,1,1, // can't allocate buffers of size 0 => insert one zero dummy plane
+};
+
 float spheres[] = {  // center.xyz, radius  |  emmission.xyz, 0  |  color.rgb, refltype     
-    1e5 - 2.6, 0, 0, 1e5,   0, 0, 0, 0,  .85, .25, .25,  1, // Left (DIFFUSE)
-    1e5 + 2.6, 0, 0, 1e5,   0, 0, 0, 0,  .25, .35, .85,  1, // Right
-    0, 1e5 + 2, 0, 1e5,     0, 0, 0, 0,  .75, .75, .75,  1, // Top
-    0,-1e5 - 2, 0, 1e5,     0, 0, 0, 0,  .75, .75, .75,  1, // Bottom
-    0, 0, -1e5 - 2.8, 1e5,  0, 0, 0, 0,  .85, .85, .25,  1, // Back 
-    0, 0, 1e5 + 7.9, 1e5,   0, 0, 0, 0,  0.1, 0.7, 0.7,  1, // Front
+    // 1e5 - 2.6, 0, 0, 1e5,   0, 0, 0, 0,  .85, .25, .25,  1, // Left (DIFFUSE)
+    // 1e5 + 2.6, 0, 0, 1e5,   0, 0, 0, 0,  .25, .35, .85,  1, // Right
+    // 0, 1e5 + 2, 0, 1e5,     0, 0, 0, 0,  .75, .75, .75,  1, // Top
+    // 0,-1e5 - 2, 0, 1e5,     0, 0, 0, 0,  .75, .75, .75,  1, // Bottom
+    // 0, 0, -1e5 - 2.8, 1e5,  0, 0, 0, 0,  .85, .85, .25,  1, // Back 
+    // 0, 0, 1e5 + 7.9, 1e5,   0, 0, 0, 0,  0.1, 0.7, 0.7,  1, // Front
+
     -1.3, -1.2, -1.3, 0.8,  0, 0, 0, 0,  .999,.999,.999, 2, // REFLECTIVE
     1.3, -1.2, -0.2, 0.8,   0, 0, 0, 0,  .999,.999,.999, 3, // REFRACTIVE
     0, 2*0.8, 0, 0.2,       100,100,100,0,  0, 0, 0,   1, // Light
-    //0,0,0,0,   0,0,0,0,  0,0,0,0,
 };
 
 struct pushConst_t {
@@ -138,10 +149,13 @@ private:
     */
     VkBuffer buffer;
     VkDeviceMemory bufferMemory;
-
     uint32_t bufferSize; // size of `buffer` in bytes.
 
 #if defined( PATHTRACER_MODE )
+    VkBuffer planeBuffer;
+    VkDeviceMemory planeBufferMemory;
+    uint32_t planeBufferSize = sizeof( planes ); // size of `buffer` in bytes.
+
     VkBuffer sphereBuffer;
     VkDeviceMemory sphereBufferMemory;
     uint32_t sphereBufferSize = sizeof( spheres ); // size of `buffer` in bytes.
@@ -702,6 +716,43 @@ public:
 
 
 #if defined( PATHTRACER_MODE )
+        printf( "planebuffer create!\n" ); fflush( stdout );
+        VkBufferCreateInfo planeBufferCreateInfo = {};
+        planeBufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+        planeBufferCreateInfo.size = planeBufferSize; // buffer size in bytes.
+        planeBufferCreateInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT; // buffer is used as a storage buffer.
+        bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE; // buffer is exclusive to a single queue family at a time.
+
+        VK_CHECK_RESULT(vkCreateBuffer(device, &planeBufferCreateInfo, NULL, &planeBuffer)); // create buffer.
+
+        VkMemoryRequirements planeBufferMemoryRequirements;
+        vkGetBufferMemoryRequirements(device, planeBuffer, &planeBufferMemoryRequirements);
+
+        VkMemoryAllocateInfo planeBufferAllocateInfo = {};
+        planeBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+        planeBufferAllocateInfo.allocationSize = planeBufferMemoryRequirements.size; // specify required memory.
+
+        planeBufferAllocateInfo.memoryTypeIndex = findMemoryType(
+            planeBufferMemoryRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+
+        VK_CHECK_RESULT(vkAllocateMemory(device, &planeBufferAllocateInfo, NULL, &planeBufferMemory)); // allocate memory on device.
+
+        // Now associate that allocated memory with the buffer. With that, the buffer is backed by actual memory.
+        VK_CHECK_RESULT(vkBindBufferMemory(device, planeBuffer, planeBufferMemory, 0));
+
+        // upload planes[] data from host to device
+        {
+            void* vpMappedMemory = NULL;
+            // Map the buffer memory, so that we can read from it on the CPU.
+            vkMapMemory(device, planeBufferMemory, 0, planeBufferSize, 0, &vpMappedMemory);
+            float* pMappedMemory = (float *)vpMappedMemory;
+            memcpy( pMappedMemory, planes, sizeof( planes ) );
+            // Done writing, so unmap.
+            vkUnmapMemory(device, planeBufferMemory);
+        }
+
+
+
         printf( "spherebuffer create!\n" ); fflush( stdout );
         VkBufferCreateInfo sphereBufferCreateInfo = {};
         sphereBufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -771,7 +822,7 @@ public:
         VK_CHECK_RESULT(vkCreateDescriptorSetLayout(device, &descriptorSetLayoutCreateInfo, NULL, &descriptorSetLayout));
 
     #elif defined( PATHTRACER_MODE )
-        VkDescriptorSetLayoutBinding descriptorSetLayoutBindings[2] = {
+        VkDescriptorSetLayoutBinding descriptorSetLayoutBindings[3] = {
             {
                 0,
                 VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -779,20 +830,27 @@ public:
                 VK_SHADER_STAGE_COMPUTE_BIT,
                 0
             },
-            {
+            { // planes
                 1,
                 VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                 1,
                 VK_SHADER_STAGE_COMPUTE_BIT,
                 0
-            }
+            },
+            { // spheres
+                2,
+                VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                1,
+                VK_SHADER_STAGE_COMPUTE_BIT,
+                0
+            },
         };
 
         VkDescriptorSetLayoutCreateInfo descriptorSetLayoutCreateInfo = {
             VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
             0,
             0,
-            2,
+            3,
             descriptorSetLayoutBindings
         };
 
@@ -819,10 +877,10 @@ public:
         descriptorPoolCreateInfo.poolSizeCount = 1;
         descriptorPoolCreateInfo.pPoolSizes = &descriptorPoolSize;
     #elif defined( PATHTRACER_MODE ) 
-        //create a descriptor pool that will hold 2 storage buffers
+        //create a descriptor pool that will hold 3 storage buffers // image, planes, spheres
         VkDescriptorPoolSize descriptorPoolSize = {
             VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-            2
+            3
         };
 
         VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = {
@@ -890,29 +948,22 @@ public:
         descriptorBufferInfo.offset = 0;
         descriptorBufferInfo.range = VK_WHOLE_SIZE;//bufferSize;
 
+        VkDescriptorBufferInfo descriptorPlaneBufferInfo = {};
+        descriptorPlaneBufferInfo.buffer = planeBuffer;
+        descriptorPlaneBufferInfo.offset = 0;
+        descriptorPlaneBufferInfo.range = VK_WHOLE_SIZE;
+
         VkDescriptorBufferInfo descriptorSphereBufferInfo = {};
         descriptorSphereBufferInfo.buffer = sphereBuffer;
         descriptorSphereBufferInfo.offset = 0;
         descriptorSphereBufferInfo.range = VK_WHOLE_SIZE;//sphereBufferSize;
 
-        // VkDescriptorBufferInfo descriptorBufferInfo = {
-        //     buffer,
-        //     0,
-        //     VK_WHOLE_SIZE
-        // };
-
-        // VkDescriptorBufferInfo descriptorSphereBufferInfo = {
-        //     sphereBuffer,
-        //     0,
-        //     VK_WHOLE_SIZE
-        // };
-
-        VkWriteDescriptorSet writeDescriptorSet[2] = {
+        VkWriteDescriptorSet writeDescriptorSet[3] = {
             {
                 VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 0,
                 descriptorSet,
-                0,
+                0, // dstBinding - image
                 0,
                 1,
                 VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -924,7 +975,19 @@ public:
                 VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                 0,
                 descriptorSet,
+                1, // dstBinding - planes
+                0,
                 1,
+                VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                0,
+                &descriptorPlaneBufferInfo,
+                0
+            },
+            {
+                VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                0,
+                descriptorSet,
+                2, // dstBinding - spheres
                 0,
                 1,
                 VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
@@ -937,7 +1000,7 @@ public:
         printf( "before vkUpdateDescriptorSets PATHTRACER_MODE\n" ); fflush( stdout );
 
         // perform the update of the descriptor set.
-        vkUpdateDescriptorSets(device, 2, writeDescriptorSet, 0, 0);
+        vkUpdateDescriptorSets(device, 3, writeDescriptorSet, 0, 0); // 3 buffers: image, planes, spheres
     #endif
 
         printf( "after vkUpdateDescriptorSets\n" ); fflush( stdout );
@@ -1185,6 +1248,8 @@ public:
         vkFreeMemory(device, bufferMemory, NULL);
         vkDestroyBuffer(device, buffer, NULL);
     #if defined( PATHTRACER_MODE )
+        vkFreeMemory(device, planeBufferMemory, NULL);
+        vkDestroyBuffer(device, planeBuffer, NULL);
         vkFreeMemory(device, sphereBufferMemory, NULL);
         vkDestroyBuffer(device, sphereBuffer, NULL);
     #endif
