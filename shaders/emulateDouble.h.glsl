@@ -16,7 +16,7 @@
 #define FP256_ulong4_fp_64_192  ( FALSE && !FP128_uint4_fp_32_96 && !USE_NATIVE_FP64 )
 
 #define FP_64_64_R128           ( FALSE && !FP128_uint4_fp_32_96 && !FP256_ulong4_fp_64_192 && !USE_NATIVE_FP64 )
-#define DF64_F32_F32            ( TRUE && !FP_64_64_R128 && !FP128_uint4_fp_32_96 && !FP256_ulong4_fp_64_192 && !USE_NATIVE_FP64 )
+#define DF64_F32_F32            ( FALSE && !FP_64_64_R128 && !FP128_uint4_fp_32_96 && !FP256_ulong4_fp_64_192 && !USE_NATIVE_FP64 )
 
 
 #if ( DF64_F32_F32 == TRUE )
