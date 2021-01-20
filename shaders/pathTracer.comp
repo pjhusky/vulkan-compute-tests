@@ -112,7 +112,6 @@ bool intersect(Ray ray, out HitInfo hitInfo /*out int id, out highp vec3 x, out 
         }
     }
 
-
     for ( int i = 0; i < spheres.length(); i++ ) { 
         Sphere sphere = spheres[i];                  
 
@@ -244,10 +243,9 @@ bool intersect(Ray ray, out HitInfo hitInfo /*out int id, out highp vec3 x, out 
     } 
     if (t < inf) {
         hitInfo.rayT = t;
-        //x = ray.o + ray.d*t;
-        //n = normalize(x-spheres[id].geo.xyz);
+        return true;
     }
-    return t < inf;
+    return false;
 }
 
 void main() {
@@ -276,91 +274,85 @@ void main() {
     //for (int depth = 0, maxDepth = 64; depth < maxDepth; depth++) {   
     for (int depth = 0, maxDepth = 12; depth < maxDepth; depth++) {   
         HitInfo hitInfo;
-        if (intersect(ray, hitInfo)) {   // intersect ray with scene
-            
-            // int id = hitInfo.objIdx;            
-            // Sphere obj = spheres[ id ];
-            // vec3 objIsectPoint = ray.o + hitInfo.rayT * ray.d;
-            // vec3 objIsectNormal = normalize( objIsectPoint - obj.geo.xyz );
+        if ( !intersect( ray, hitInfo ) ) { continue; } // intersect ray with scene
 
-            vec3 objEmissiveColor, objDiffuseColor;
-            int objMaterialType;
-            vec3 objIsectNormal;
-            vec3 objIsectPoint = ray.o + hitInfo.rayT * ray.d;
+        vec3 objEmissiveColor, objDiffuseColor;
+        int objMaterialType;
+        vec3 objIsectNormal;
+        vec3 objIsectPoint = ray.o + hitInfo.rayT * ray.d;
 
-            if ( hitInfo.objType == ePlane ) {
-                Plane hitPlane = planes[ hitInfo.objIdx ];
-                objMaterialType  = int( floor( hitPlane.c.w + 0.5f ) );
-                objDiffuseColor  = hitPlane.c.rgb;
-                objEmissiveColor = hitPlane.e.rgb;
-                objIsectNormal = hitPlane.equation.xyz;
-            } else if ( hitInfo.objType == eSphere ) {
-                Sphere hitSphere = spheres[ hitInfo.objIdx ];
-                objMaterialType  = int( floor( hitSphere.c.w + 0.5f ) );
-                objDiffuseColor  = hitSphere.c.rgb;
-                objEmissiveColor = hitSphere.e.rgb;
-                objIsectNormal = normalize( objIsectPoint - hitSphere.geo.xyz );
-            }
+        if ( hitInfo.objType == ePlane ) {
+            Plane hitPlane = planes[ hitInfo.objIdx ];
+            objMaterialType  = int( floor( hitPlane.c.w + 0.5f ) );
+            objDiffuseColor  = hitPlane.c.rgb;
+            objEmissiveColor = hitPlane.e.rgb;
+            objIsectNormal = hitPlane.equation.xyz;
+        } else if ( hitInfo.objType == eSphere ) {
+            Sphere hitSphere = spheres[ hitInfo.objIdx ];
+            objMaterialType  = int( floor( hitSphere.c.w + 0.5f ) );
+            objDiffuseColor  = hitSphere.c.rgb;
+            objEmissiveColor = hitSphere.e.rgb;
+            objIsectNormal = normalize( objIsectPoint - hitSphere.geo.xyz );
+        }
 
-            vec3 nl = dot(objIsectNormal,ray.d) < 0 ? objIsectNormal : -objIsectNormal;
-            accrad += accmat * objEmissiveColor * emissive;      // add emssivie term only if emissive flag is set to 1
-            accmat *= objDiffuseColor;
-            vec3 rnd = rand01(uvec3(pix, samps.x*maxDepth + depth));    // vector of random numbers for sampling
-            float p = max(max(objDiffuseColor.x, objDiffuseColor.y), objDiffuseColor.z);  // max reflectance
-            if (depth > 5) {
-                if (rnd.z >= p) break;  // Russian Roulette ray termination
-                else accmat /= p;       // Energy compensation of surviving rays
-            }
-            //-- Ideal DIFFUSE reflection
-            if ( objMaterialType == eDiffuseMaterial ) { 
-            //if ( true ) { // !!! DEBUG !!!
-                // Direct Illumination: Next Event Estimation over any present lights
-                for ( int i = 0; i < spheres.length(); i++ ) {
-                    Sphere ls = spheres[i];
-                    //if (all(equal(ls.e, vec3(0)))) continue; // skip non-emissive spheres 
-                    //if ( all( ls.e.xyz == vec3( 0.0 ) ) ) continue; // skip non-emissive spheres 
-                    if ( dot( ls.e.xyz, ls.e.xyz ) <= 0.0 ) continue; // skip non-emissive spheres 
-                    vec3 xls, nls, xc = ls.geo.xyz - objIsectPoint;
-                    vec3 sw = normalize(xc), su = normalize(cross((abs(sw.x)>.1 ? vec3(0,1,0) : vec3(1,0,0)), sw)), sv = cross(sw,su);
-                    float cos_a_max = sqrt(float(1 - ls.geo.w*ls.geo.w / dot(xc,xc)));
-                    float cos_a = 1 - rnd.x + rnd.x*cos_a_max, sin_a = sqrt(1 - cos_a*cos_a);
-                    float phi = 2 * pi * rnd.y;
-                    vec3 l = normalize(su*cos(phi)*sin_a + sv*sin(phi)*sin_a + sw*cos_a);   // sampled direction towards light
-                    int idls = 0; 
-                    // if (intersect(Ray(x,l), idls, xls, nls) && idls == i) {      // test if shadow ray hits this light source
-                    //     float omega = 2 * pi * (1-cos_a_max);
-                    //     accrad += accmat / pi * max(dot(l,nl),0) * ls.e.rgb * omega;   // brdf term obj.c.xyz already in accmat, 1/pi for brdf
-                    // }
-                    HitInfo hitInfo_ne;
-                    if (intersect(Ray(objIsectPoint,l), hitInfo_ne) && hitInfo_ne.objType == eSphere && i == hitInfo_ne.objIdx ) {      // test if shadow ray hits this light source
-                        float omega = 2 * pi * (1-cos_a_max);
-                        accrad += accmat / pi * max(dot(l,nl),0) * ls.e.rgb * omega;   // brdf term obj.c.xyz already in accmat, 1/pi for brdf
-                    }
+        vec3 nl = dot(objIsectNormal,ray.d) < 0 ? objIsectNormal : -objIsectNormal;
+        accrad += accmat * objEmissiveColor * emissive;      // add emssivie term only if emissive flag is set to 1
+        accmat *= objDiffuseColor;
+        vec3 rnd = rand01(uvec3(pix, samps.x*maxDepth + depth));    // vector of random numbers for sampling
+        float p = max(max(objDiffuseColor.x, objDiffuseColor.y), objDiffuseColor.z);  // max reflectance
+        if (depth > 5) {
+            if (rnd.z >= p) break;  // Russian Roulette ray termination
+            else accmat /= p;       // Energy compensation of surviving rays
+        }
+        //-- Ideal DIFFUSE reflection
+        if ( objMaterialType == eDiffuseMaterial ) { 
+        //if ( true ) { // !!! DEBUG !!!
+            // Direct Illumination: Next Event Estimation over any present lights
+            for ( int i = 0; i < spheres.length(); i++ ) {
+                Sphere ls = spheres[i];
+                //if (all(equal(ls.e, vec3(0)))) continue; // skip non-emissive spheres 
+                //if ( all( ls.e.xyz == vec3( 0.0 ) ) ) continue; // skip non-emissive spheres 
+                if ( dot( ls.e.xyz, ls.e.xyz ) <= 0.0 ) continue; // skip non-emissive spheres 
+                vec3 xls, nls, xc = ls.geo.xyz - objIsectPoint;
+                vec3 sw = normalize(xc), su = normalize(cross((abs(sw.x)>.1 ? vec3(0,1,0) : vec3(1,0,0)), sw)), sv = cross(sw,su);
+                float cos_a_max = sqrt(float(1 - ls.geo.w*ls.geo.w / dot(xc,xc)));
+                float cos_a = 1 - rnd.x + rnd.x*cos_a_max, sin_a = sqrt(1 - cos_a*cos_a);
+                float phi = 2 * pi * rnd.y;
+                vec3 l = normalize(su*cos(phi)*sin_a + sv*sin(phi)*sin_a + sw*cos_a);   // sampled direction towards light
+                int idls = 0; 
+                // if (intersect(Ray(x,l), idls, xls, nls) && idls == i) {      // test if shadow ray hits this light source
+                //     float omega = 2 * pi * (1-cos_a_max);
+                //     accrad += accmat / pi * max(dot(l,nl),0) * ls.e.rgb * omega;   // brdf term obj.c.xyz already in accmat, 1/pi for brdf
+                // }
+                HitInfo hitInfo_ne;
+                if (intersect(Ray(objIsectPoint,l), hitInfo_ne) && hitInfo_ne.objType == eSphere && hitInfo_ne.objIdx == i ) {      // test if shadow ray hits this light source
+                    float omega = 2 * pi * (1-cos_a_max);
+                    accrad += accmat / pi * max(dot(l,nl),0) * ls.e.rgb * omega;   // brdf term obj.c.xyz already in accmat, 1/pi for brdf
                 }
-                // Indirect Illumination: cosine-weighted importance sampling
-                float r1 = 2 * pi * rnd.x, r2 = rnd.y, r2s = sqrt(r2);
-                vec3 w = nl, u = normalize((cross(abs(w.x)>0.1 ? vec3(0,1,0) : vec3(1,0,0), w))), v = cross(w,u);
-                ray = Ray(objIsectPoint, normalize(u*cos(r1)*r2s + v * sin(r1)*r2s + w * sqrt(1 - r2)));
-                emissive = 0;   // in the next bounce, consider reflective part only!
-            } 
-            //-- Ideal SPECULAR reflection
-            else if ( objMaterialType == eReflectiveMaterial ) {   
-                ray = Ray(objIsectPoint, reflect(ray.d,objIsectNormal));  
-                emissive = 1; 
-            } 
-            //-- Ideal dielectric REFRACTION
-            else if ( objMaterialType == eRefractiveMaterial ) {  
-                bool into = ( objIsectNormal == nl );
-                float cos2t, nc=1, nt=1.5, nnt = into ? nc/nt : nt/nc, ddn = dot(ray.d,nl);
-                if ((cos2t = 1 - nnt * nnt*(1 - ddn * ddn)) >= 0) {     // Fresnel reflection/refraction
-                    vec3 tdir = normalize(ray.d*nnt - objIsectNormal * ((into ? 1 : -1)*(ddn*nnt + sqrt(cos2t))));
-                    float a = nt - nc, b = nt + nc, R0 = a*a/(b*b), c = 1 - (into ? -ddn : dot(tdir,objIsectNormal));
-                    float Re = R0 + (1 - R0)*c*c*c*c*c, Tr = 1 - Re, P = 0.25 + 0.5*Re, RP = Re/P, TP = Tr/(1-P);
-                    ray = Ray(objIsectPoint, rnd.x < P ? reflect(ray.d,objIsectNormal) : tdir);      // pick reflection with probability P
-                    accmat *=  rnd.x < P ? RP : TP;                     // energy compensation
-                } else ray = Ray(objIsectPoint, reflect(ray.d,objIsectNormal));                      // Total internal reflection
-                emissive = 1; 
             }
+            // Indirect Illumination: cosine-weighted importance sampling
+            float r1 = 2 * pi * rnd.x, r2 = rnd.y, r2s = sqrt(r2);
+            vec3 w = nl, u = normalize((cross(abs(w.x)>0.1 ? vec3(0,1,0) : vec3(1,0,0), w))), v = cross(w,u);
+            ray = Ray(objIsectPoint, normalize(u*cos(r1)*r2s + v * sin(r1)*r2s + w * sqrt(1 - r2)));
+            emissive = 0;   // in the next bounce, consider reflective part only!
+        } 
+        //-- Ideal SPECULAR reflection
+        else if ( objMaterialType == eReflectiveMaterial ) {   
+            ray = Ray(objIsectPoint, reflect(ray.d,objIsectNormal));  
+            emissive = 1; 
+        } 
+        //-- Ideal dielectric REFRACTION
+        else if ( objMaterialType == eRefractiveMaterial ) {  
+            bool into = ( objIsectNormal == nl );
+            float cos2t, nc=1, nt=1.5, nnt = into ? nc/nt : nt/nc, ddn = dot(ray.d,nl);
+            if ((cos2t = 1 - nnt * nnt*(1 - ddn * ddn)) >= 0) {     // Fresnel reflection/refraction
+                vec3 tdir = normalize(ray.d*nnt - objIsectNormal * ((into ? 1 : -1)*(ddn*nnt + sqrt(cos2t))));
+                float a = nt - nc, b = nt + nc, R0 = a*a/(b*b), c = 1 - (into ? -ddn : dot(tdir,objIsectNormal));
+                float Re = R0 + (1 - R0)*c*c*c*c*c, Tr = 1 - Re, P = 0.25 + 0.5*Re, RP = Re/P, TP = Tr/(1-P);
+                ray = Ray(objIsectPoint, rnd.x < P ? reflect(ray.d,objIsectNormal) : tdir);      // pick reflection with probability P
+                accmat *=  rnd.x < P ? RP : TP;                     // energy compensation
+            } else ray = Ray(objIsectPoint, reflect(ray.d,objIsectNormal));                      // Total internal reflection
+            emissive = 1; 
         }
     }
 
