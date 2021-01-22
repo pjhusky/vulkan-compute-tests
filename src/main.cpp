@@ -35,7 +35,7 @@ constexpr int spp = 500;    // samples per pixel
 int resx = WIDTH;
 int resy = HEIGHT;
 
-#define TEST_PRECISION_WITH_LARGE_SPHERE_WALLS  1
+#define TEST_PRECISION_WITH_LARGE_SPHERE_WALLS  0
 
 float planes[] = { // normal.xyz, distToOrigin  |  emmission.xyz, 0  |  color.rgb, refltype     
     #if ( TEST_PRECISION_WITH_LARGE_SPHERE_WALLS == 0 )
