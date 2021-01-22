@@ -12,6 +12,9 @@
 // set everything to false to fall back to single-precision (native) floats
 #define USE_NATIVE_FP64         FALSE // ==> won't run on MacOS over Metal :-(
 
+// unfortunately, implementing these two methods does not make sense on MacOS
+// => for our application, using 32bit for the integral part may not be enough (uint4 fp_32_96 format)
+// => switching to ulong4 (fp_64_192) doesn't work on MacOS over Metal :-(
 #define FP128_uint4_fp_32_96    ( FALSE && !USE_NATIVE_FP64 )
 #define FP256_ulong4_fp_64_192  ( FALSE && !FP128_uint4_fp_32_96 && !USE_NATIVE_FP64 )
 
