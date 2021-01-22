@@ -16,8 +16,9 @@ $(PATHTRACER_EXE): src/main.cpp src/lodepng.cpp src/lodepng.h shaders/pathTracer
 #shaders/pathTracer.spv: shaders/pathTracer.comp shaders/*.h.glsl Makefile
 shaders/pathTracer.spv: shaders/pathTracer.comp shaders/emulateDouble.h.glsl Makefile
 #$(VULKAN_SDK)bin/glslangValidator -V shaders/pathTracer.comp -o shaders/pathTracer.spv
-	$(VULKAN_SDK)bin/glslc -E shaders/pathTracer.comp -o shaders/pathTracer.preprocessed.comp
-	$(VULKAN_SDK)bin/glslangValidator -V shaders/pathTracer.preprocessed.comp -o shaders/pathTracer.spv
+	@#$(VULKAN_SDK)bin/glslc -E shaders/pathTracer.comp -o shaders/pathTracer.preprocessed.comp
+	@#$(VULKAN_SDK)bin/glslangValidator -V shaders/pathTracer.preprocessed.comp -o shaders/pathTracer.spv
+	$(VULKAN_SDK)bin/glslc -O0 shaders/pathTracer.comp -o shaders/pathTracer.spv
 	rm -f shaders/pathTracer.preprocessed.comp
 
 lofi-run: $(PATHTRACER_EXE)
