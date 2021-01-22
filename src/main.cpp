@@ -35,25 +35,30 @@ constexpr int spp = 500;    // samples per pixel
 int resx = WIDTH;
 int resy = HEIGHT;
 
-float planes[] = { // normal.xyz, distToOrigin  |  emmission.xyz, 0  |  color.rgb, refltype     
-    -1.0f,  +0.0f,  +0.0f,  +2.6f,      0, 0, 0, 0,     .85, .25, .25,  1, // Left
-    +1.0f,  +0.0f,  +0.0f,  +2.6f,      0, 0, 0, 0,     .25, .35, .85,  1, // Right
-    +0.0f,  +1.0f,  +0.0f,  +2.0f,      0, 0, 0, 0,     .75, .75, .75,  1, // Top
-    +0.0f,  -1.0f,  +0.0f,  +2.0f,      0, 0, 0, 0,     .75, .75, .75,  1, // Bottom
-    +0.0f,  +0.0f,  -1.0f,  +2.8f,      0, 0, 0, 0,     .85, .85, .25,  1, // Back
-    +0.0f,  +0.0f,  +1.0f,  +7.9f,      0, 0, 0, 0,     0.1, 0.7, 0.7,  1, // Front
+#define TEST_PRECISION_WITH_LARGE_SPHERE_WALLS  1
 
-    // 1,0,0,1000,    0,0,0,0,     1,1,1,1, // can't allocate buffers of size 0 => insert one zero dummy plane
+float planes[] = { // normal.xyz, distToOrigin  |  emmission.xyz, 0  |  color.rgb, refltype     
+    #if ( TEST_PRECISION_WITH_LARGE_SPHERE_WALLS == 0 )
+        -1.0f,  +0.0f,  +0.0f,  +2.6f,      0, 0, 0, 0,     .85, .25, .25,  1, // Left
+        +1.0f,  +0.0f,  +0.0f,  +2.6f,      0, 0, 0, 0,     .25, .35, .85,  1, // Right
+        +0.0f,  +1.0f,  +0.0f,  +2.0f,      0, 0, 0, 0,     .75, .75, .75,  1, // Top
+        +0.0f,  -1.0f,  +0.0f,  +2.0f,      0, 0, 0, 0,     .75, .75, .75,  1, // Bottom
+        +0.0f,  +0.0f,  -1.0f,  +2.8f,      0, 0, 0, 0,     .85, .85, .25,  1, // Back
+        +0.0f,  +0.0f,  +1.0f,  +7.9f,      0, 0, 0, 0,     0.1, 0.7, 0.7,  1, // Front
+    #else // must have at least one plane here
+        1,0,0,1000,    0,0,0,0,     1,1,1,1, // can't allocate buffers of size 0 => insert one zero dummy plane
+    #endif
 };
 
 float spheres[] = {  // center.xyz, radius  |  emmission.xyz, 0  |  color.rgb, refltype     
-    // 1e5 - 2.6, 0, 0, 1e5,   0, 0, 0, 0,  .85, .25, .25,  1, // Left (DIFFUSE)
-    // 1e5 + 2.6, 0, 0, 1e5,   0, 0, 0, 0,  .25, .35, .85,  1, // Right
-    // 0, 1e5 + 2, 0, 1e5,     0, 0, 0, 0,  .75, .75, .75,  1, // Top
-    // 0,-1e5 - 2, 0, 1e5,     0, 0, 0, 0,  .75, .75, .75,  1, // Bottom
-    // 0, 0, -1e5 - 2.8, 1e5,  0, 0, 0, 0,  .85, .85, .25,  1, // Back 
-    // 0, 0, 1e5 + 7.9, 1e5,   0, 0, 0, 0,  0.1, 0.7, 0.7,  1, // Front
-
+    #if ( TEST_PRECISION_WITH_LARGE_SPHERE_WALLS != 0 )
+        1e5 - 2.6, 0, 0, 1e5,   0, 0, 0, 0,  .85, .25, .25,  1, // Left (DIFFUSE)
+        1e5 + 2.6, 0, 0, 1e5,   0, 0, 0, 0,  .25, .35, .85,  1, // Right
+        0, 1e5 + 2, 0, 1e5,     0, 0, 0, 0,  .75, .75, .75,  1, // Top
+        0,-1e5 - 2, 0, 1e5,     0, 0, 0, 0,  .75, .75, .75,  1, // Bottom
+        0, 0, -1e5 - 2.8, 1e5,  0, 0, 0, 0,  .85, .85, .25,  1, // Back 
+        0, 0, 1e5 + 7.9, 1e5,   0, 0, 0, 0,  0.1, 0.7, 0.7,  1, // Front
+    #endif
     -1.3, -1.2, -1.3, 0.8,  0, 0, 0, 0,  .999,.999,.999, 2, // REFLECTIVE
     1.3, -1.2, -0.2, 0.8,   0, 0, 0, 0,  .999,.999,.999, 3, // REFRACTIVE
     0, 2*0.8, 0, 0.2,       100,100,100,0,  0, 0, 0,   1, // Light
