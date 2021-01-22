@@ -10,16 +10,216 @@
 #define FALSE   0
 
 // set everything to false to fall back to single-precision (native) floats
-#define USE_NATIVE_FP64         FALSE // ==> won't run on MacOS over Metal
+#define USE_NATIVE_FP64         FALSE // ==> won't run on MacOS over Metal :-(
 
 #define FP128_uint4_fp_32_96    ( FALSE && !USE_NATIVE_FP64 )
 #define FP256_ulong4_fp_64_192  ( FALSE && !FP128_uint4_fp_32_96 && !USE_NATIVE_FP64 )
 
+// uses uint64, which won't run on MacOS over Metal :-(
 #define FP_64_64_R128           ( FALSE && !FP128_uint4_fp_32_96 && !FP256_ulong4_fp_64_192 && !USE_NATIVE_FP64 )
+
 #define DF64_F32_F32            ( FALSE && !FP_64_64_R128 && !FP128_uint4_fp_32_96 && !FP256_ulong4_fp_64_192 && !USE_NATIVE_FP64 )
 
+#define DS_f32_f32              ( FALSE && !DF64_F32_F32 && !FP_64_64_R128 && !FP128_uint4_fp_32_96 && !FP256_ulong4_fp_64_192 && !USE_NATIVE_FP64 )
 
-#if ( DF64_F32_F32 == TRUE )
+#if ( DS_f32_f32 == TRUE ) // Henry Thasler
+// Emulation based on Fortran-90 double-single package. See http://crd.lbl.gov/~dhbailey/mpdist/
+
+// https://blog.cyclemap.link/2011-07-24-glsl-part4-nvidia/
+    // GLSL Mandelbrot Shader by Henry Thasler (www.thasler.org/blog)
+
+    //#pragma optionNV(fastmath off)
+    //#pragma optionNV(fastprecision off)
+
+    // https://www.betelge.com/blog/2014/10/05/emulated-double-precision-in-opengl-es-shader/
+    /*
+        uniform float split = 1025; // 2^(bits of precision) + 1
+
+        vec2 splitf(float a)
+        {
+        float t, hi;
+        t = split * a;
+        hi = t - (t-a);
+        return vec2(hi, a-hi);
+        }
+
+        the split constant performs a bit shift by p bits and should be set to 2^p+1. The value in the example, 1025, works for 10 bit mediump floats.    
+        And if you are using Nvidia hardware you might need the following lines in your shader code:
+
+            #pragma optionNV(fastmath off)
+            #pragma optionNV(fastprecision off)
+
+        otherwise the GLSL compiler will simplify the hi = t - (t-a) to hi = a.
+    */
+
+    // create double-single number from float
+    vec2 ds_set(float a) {
+        vec2 z;
+        z.x = a;
+        z.y = 0.0;
+        return z;
+    }
+
+    float ds_get( vec2 dp ) {
+        return dp.x;
+    }
+
+    // Substract: res = ds_add(a, b) => res = a + b
+    vec2 ds_add (vec2 dsa, vec2 dsb)
+    {
+        vec2 dsc;
+        float t1, t2, e;
+
+        t1 = dsa.x + dsb.x;
+        e = t1 - dsa.x;
+        t2 = ((dsb.x - e) + (dsa.x - (t1 - e))) + dsa.y + dsb.y;
+
+        dsc.x = t1 + t2;
+        dsc.y = t2 - (dsc.x - t1);
+        return dsc;
+    }
+
+    // Substract: res = ds_sub(a, b) => res = a - b
+    vec2 ds_sub (vec2 dsa, vec2 dsb) {
+        vec2 dsc;
+        float e, t1, t2;
+
+        t1 = dsa.x - dsb.x;
+        e = t1 - dsa.x;
+        t2 = ((-dsb.x - e) + (dsa.x - (t1 - e))) + dsa.y - dsb.y;
+
+        dsc.x = t1 + t2;
+        dsc.y = t2 - (dsc.x - t1);
+        return dsc;
+    }
+
+    // Compare: res = -1 if a < b
+    //              = 0 if a == b
+    //              = 1 if a > b
+    float ds_compare(vec2 dsa, vec2 dsb)
+    {
+        if (dsa.x < dsb.x) { return -1.; }
+        else if (dsa.x == dsb.x) {
+            if (dsa.y < dsb.y) { return -1.; } 
+            else if (dsa.y == dsb.y) { return 0.; }
+            else { return 1.; }
+        }
+        else { return 1.; }
+    }
+
+    // Multiply: res = ds_mul(a, b) => res = a * b
+    vec2 ds_mul (vec2 dsa, vec2 dsb) {
+        vec2 dsc;
+        float c11, c21, c2, e, t1, t2;
+        float a1, a2, b1, b2, cona, conb, split = 8193.;
+
+        cona = dsa.x * split;
+        conb = dsb.x * split;
+        a1 = cona - (cona - dsa.x);
+        b1 = conb - (conb - dsb.x);
+        a2 = dsa.x - a1;
+        b2 = dsb.x - b1;
+
+        c11 = dsa.x * dsb.x;
+        c21 = a2 * b2 + (a2 * b1 + (a1 * b2 + (a1 * b1 - c11)));
+
+        c2 = dsa.x * dsb.y + dsa.y * dsb.x;
+
+        t1 = c11 + c2;
+        e = t1 - c11;
+        t2 = dsa.y * dsb.y + ((c2 - e) + (c11 - (t1 - e))) + c21;
+
+        dsc.x = t1 + t2;
+        dsc.y = t2 - (dsc.x - t1);
+
+        return dsc;
+    }
+
+    // https://blog.cyclemap.link/2011-07-24-glsl-part4-nvidia/
+    // NOTE: there was a problem after pasting => hand-typed it in, so there may be typos, i.e., wrong code!!!
+    vec2 ds_div( vec2 dsa, vec2 dsb ) {
+        vec2 dsc;
+        float c11, c21, c2, e, s1, s2, t1, t2, t11, t12, t21, t22;
+        float a1, a2, b1, b2, cona, conb, split = 8193.;
+
+        s1 = dsa.x / dsb.x;
+
+        cona = s1 * split;
+        conb = dsb.x * split;
+        a1 = cona - ( cona - s1 );
+        b1 = conb - ( conb - dsb.x );
+        a2 = s1 - a1;
+        b2 = dsb.x - b1;
+
+        c11 = s1 * dsb.x;
+        c21 = ( ( ( a1 * b1 - c11 ) + a1 * b2 ) + a2 * b1 ) + a2 * b2;
+        c2 = s1 * dsb.y;
+
+        t1 = c11 + c2;
+        e = t1 - c11;
+        t2 = ( ( c2 - e ) + ( c11 - ( t1 - e ) ) ) + c21;
+
+        t12 = t1 + t2;
+        t22 = t2 - ( t12 - t1 );
+
+        t11 = dsa.x - t12;
+        e = t11 - dsa.x;
+        t21 = ( ( -t12 - e ) + ( dsa.x - ( t11 - e ) ) ) + dsa.y - t22;
+
+        s2 = ( t11 + t21 ) / dsb.x;
+
+        dsc.x = s1 + s2;
+        dsc.y = s2 - ( dsc.x - s1 );
+
+        return dsc;
+    }
+
+    // ported over from DF64_F32_F32 - needed by sqrt
+    highp vec2 ds_split( highp float a ) {
+        highp const float split = 4097.0; // ( 1 << 12 ) + 1;
+        highp float t = a * split;
+        highp float a_hi = t - ( t - a ); // might be (incorrectly) optimized, see https://www.betelge.com/blog/2014/10/05/emulated-double-precision-in-opengl-es-shader/
+        highp float a_lo = a - a_hi;
+        return vec2( a_hi, a_lo );
+    }
+    // ported over from DF64_F32_F32 - needed by sqrt
+    highp vec2 ds_twoProd( highp float a, highp float b ) {
+        highp float p = a * b;
+        highp vec2 aS = ds_split( a );
+        highp vec2 bS = ds_split( b );
+        highp float err = ( ( aS.x * bS.x - p )
+                    + aS.x * bS.y + aS.y * bS.x )
+                    + aS.y  * bS.y;
+        return vec2( p, err );
+    }
+    // ported over from DF64_F32_F32
+    highp vec2 ds_sqrt( highp vec2 a ) {
+        float xn = inversesqrt( a.x );
+        //highp float xn = 1.0 / sqrt( a.x ); // better precision?
+        highp float yn = a.x * xn;
+        highp vec2 yn_df64 = ds_set( yn );
+        highp vec2 ynsqr = ds_mul( yn_df64, yn_df64 );
+
+    //   float diff = df64_to_f32( df64_diff( a, ynsqr  ) );
+        highp float diff = ds_get( ds_sub( a, ynsqr ) );
+        highp vec2 prod = ds_twoProd( xn, diff ) * 0.5;
+        return ds_add( ds_set( yn ), prod );
+    }
+
+
+    highp vec2 ds_dot3( 
+        highp vec2 ax_ds, highp vec2 ay_ds, highp vec2 az_ds, 
+        highp vec2 bx_ds, highp vec2 by_ds, highp vec2 bz_ds ) {
+        //v1.x * v2.x + v1.y * v2.y + v1.z * v2.z;
+
+        highp vec2 xMul_ds = ds_mul( ax_ds, bx_ds );
+        highp vec2 yMul_ds = ds_mul( ay_ds, by_ds );
+        highp vec2 zMul_ds = ds_mul( az_ds, bz_ds );
+
+        return ds_add( ds_add( xMul_ds, yMul_ds ), zMul_ds );
+    }
+
+#elif ( DF64_F32_F32 == TRUE )
 // http://andrewthall.org/papers/df64_qf128.pdf
 // https://github.com/sukop/doubledouble/blob/master/doubledouble.py
 
@@ -87,9 +287,22 @@ highp vec2 df64_add( highp vec2 a, highp vec2 b ) {
 
 // ### multiplication ###
 highp vec2 split( highp float a ) {
-    highp const float split = 4097; // ( 1 << 12 ) + 1;
+    highp const float split = 4097.0; // ( 1 << 12 ) + 1;
     highp float t = a * split;
-    highp float a_hi = t - ( t - a );
+    highp float a_hi = t - ( t - a ); // might be (incorrectly) optimized, see https://www.betelge.com/blog/2014/10/05/emulated-double-precision-in-opengl-es-shader/
+
+    //highp float a_hi = 1.00001 * t - 0.99999 * t + a;
+
+    //highp float a_hi1 = ( t - a ); //
+    //highp float a_hi = a * split - a_hi1;
+    //highp float a_hi = a * split - ( a * (split - 1) );
+    //highp float a_hi = a * split - ( t - a + 0.0001 );
+    //highp float a_hi = t - ( t*0.999999 - a );
+    //!! highp float a_hi = t - ( t*1.0000001 - a );
+    //highp float a_hi = t - ( t*1.000001 - a );
+    //highp float a_hi = t*1.000001 - ( t*0.9999999 - a );
+    //highp float a_hi = t - ( (t*1.00001 - a*1.00001)*0.99999 );
+
     highp float a_lo = a - a_hi;
     return vec2( a_hi, a_lo );
 }

@@ -5,6 +5,14 @@
 #extension GL_ARB_gpu_shader_int64 : enable
 #extension GL_ARB_gpu_shader_fp64 : enable
 
+// seems to be ignored!
+#pragma optimize(off)
+#pragma debug(on)
+
+#pragma optionNV(fastmath off)
+#pragma optionNV(fastprecision off)
+
+
 precision highp int;
 precision highp float;
 
@@ -18,6 +26,8 @@ precision highp float;
         fragColor = vec4(0.5, 0.0, 0.0, 1.0);
     }
 */
+
+
 
 // preprocess with 'glslc -E' before compiling into spir-v
 //!!! 
@@ -129,6 +139,76 @@ bool intersect(Ray ray, out HitInfo hitInfo /*out int id, out highp vec3 x, out 
             if (det < 0) continue; else det=sqrt(det); 
             d = (d = float(b-det))>eps ? d : ((d=float(b+det))>eps ? d : inf);
         } else
+    #elif ( DS_f32_f32 == TRUE )
+        // need double precision?
+        if ( sphere.geo.w > maxLenForFloatCalc || 
+            dot( sphere.geo.xyz, sphere.geo.xyz ) > maxLenForFloatCalc * maxLenForFloatCalc ||
+            dot( ray.o, ray.o ) > maxLenForFloatCalc * maxLenForFloatCalc ||
+            dot( sphere.geo.xyz - ray.o, sphere.geo.xyz - ray.o ) > maxLenForFloatCalc * maxLenForFloatCalc ) {
+
+            vec2 sGeoX_ds = ds_set( sphere.geo.x );
+            vec2 sGeoY_ds = ds_set( sphere.geo.y );
+            vec2 sGeoZ_ds = ds_set( sphere.geo.z );
+
+            vec2 neg_roX_ds = ds_set( -ray.o.x );
+            vec2 neg_roY_ds = ds_set( -ray.o.y );
+            vec2 neg_roZ_ds = ds_set( -ray.o.z );
+
+            vec2 ocX_ds = ds_add( sGeoX_ds, neg_roX_ds );
+            vec2 ocY_ds = ds_add( sGeoY_ds, neg_roY_ds );
+            vec2 ocZ_ds = ds_add( sGeoZ_ds, neg_roZ_ds );
+
+            vec2 rdX_ds = ds_set( ray.d.x );
+            vec2 rdY_ds = ds_set( ray.d.y );
+            vec2 rdZ_ds = ds_set( ray.d.z );
+
+            vec2 b_ds = ds_dot3( 
+                ocX_ds, ocY_ds, ocZ_ds, 
+                rdX_ds, rdY_ds, rdZ_ds );
+            
+            vec2 sGeoW_ds = ds_set( sphere.geo.w );
+
+            vec2 det_ds = ds_add(
+                ds_sub ( // b*b-dot(oc,oc)
+                    ds_mul( b_ds, b_ds ), // b*b
+                    ds_dot3( ocX_ds, ocY_ds, ocZ_ds, ocX_ds, ocY_ds, ocZ_ds ) ), // dot(oc,oc)
+                ds_mul( sGeoW_ds, sGeoW_ds ) );
+
+            if ( ds_compare( det_ds, ds_set( 0.0 ) ) < 0.0 ) { continue; } 
+            else {
+                det_ds = ds_sqrt( det_ds ); // no ds_sqrt() - hacky, used the impl from DF64_F32_F32
+                //float det_tmp = ds_get( det_ds ); det_tmp = sqrt( det_tmp ); det_ds = ds_set( det_tmp );
+            }
+
+            // float bMinusDet_f32 = ds_get( ds_sub( b_ds, det_ds ) );
+            // float bPlusDet_f32 = ds_get( ds_add( b_ds, det_ds ) );
+            // d = ( d = bMinusDet_f32 )>eps ? d : ( ( d = bPlusDet_f32 ) > eps ? d : inf );
+
+            // float bMinusDet = b - det;
+            // float bPlusDet  = b + det;
+            // d = bMinusDet;
+            // if ( d <= eps ) {
+            //     d = bPlusDet;
+            //     if ( d <= eps ) { d = inf; }
+            // }
+
+            vec2 eps_ds = ds_set( eps );
+            vec2 bMinusDet_ds = ds_sub( b_ds, det_ds );
+            vec2 bPlusDet_ds = ds_add( b_ds, det_ds );
+            vec2 d_ds = bMinusDet_ds; d = ds_get( d_ds );
+            if ( ds_compare( d_ds, eps_ds ) <= 0.0 ) { 
+                d_ds = bPlusDet_ds; d = ds_get( d_ds );
+                if ( ds_compare( d_ds, eps_ds ) <= 0.0 ) { d = inf; }
+            }
+
+
+            // if ( ds_compare( bMinusDet_ds, eps_ds ) > 0.0 ) { d = ds_get( bMinusDet_ds ); }
+            // else if ( ds_compare( bPlusDet_ds, eps_ds ) > 0.0 ) { d = ds_get( bPlusDet_ds ); }
+            // else d = inf;
+
+
+
+        } else
     #elif ( DF64_F32_F32 == TRUE ) // perform intersection test in float-float (df64) precision - WORKS, but still lacking precision :-(
         // need double precision?
         if ( sphere.geo.w > maxLenForFloatCalc || 
@@ -235,7 +315,17 @@ bool intersect(Ray ray, out HitInfo hitInfo /*out int id, out highp vec3 x, out 
             vec3 oc = sphere.geo.xyz - ray.o;      // Solve t^2*d.d + 2*t*(o-s).d + (o-s).(o-s)-r^2 = 0 
             float b=dot(oc,ray.d), det=b*b-dot(oc,oc)+sphere.geo.w*sphere.geo.w; 
             if (det < 0) continue; else det=sqrt(det); 
-            d = (d = float(b-det))>eps ? d : ((d=float(b+det))>eps ? d : inf);
+            //??? d = (d = (b-det))>eps ? d : ((d=(b+det))>eps ? d : inf);
+
+            float bMinusDet = b - det;
+            float bPlusDet  = b + det;
+            d = bMinusDet;
+            if ( d <= eps ) {
+                d = bPlusDet;
+                if ( d <= eps ) { d = inf; }
+            }
+            //d = ( d = bMinusDet ) > eps ? d : ( ( d = bPlusDet ) > eps ? d : inf );
+
         }
         //if(d < t) { t=d; id = i; } 
         if(d < t) { t=d; hitInfo.objType = eSphere; hitInfo.objIdx = i; } 
