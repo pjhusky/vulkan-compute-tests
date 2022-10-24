@@ -67,7 +67,7 @@
         return dp.x;
     }
 
-    // Substract: res = ds_add(a, b) => res = a + b
+    // Add: res = ds_add(a, b) => res = a + b
     vec2 ds_add (vec2 dsa, vec2 dsb)
     {
         vec2 dsc;
