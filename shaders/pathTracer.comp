@@ -2,8 +2,10 @@
 
 #extension GL_ARB_separate_shader_objects : enable
 
-#extension GL_ARB_gpu_shader_int64 : enable
-#extension GL_ARB_gpu_shader_fp64 : enable
+#if ( USE_NATIVE_FP64 == TRUE )
+	#extension GL_ARB_gpu_shader_int64 : enable
+	#extension GL_ARB_gpu_shader_fp64 : enable
+#endif
 
 // seems to be ignored!
 #pragma optimize(off)
@@ -449,6 +451,8 @@ void main() {
     if (samps.x == 0) accRad[gid] = vec4(0);    // initialize radiance buffer
     accRad[gid] += vec4(accrad / samps.y, 0);   // <<< accumulate radiance   vvv write 8bit rgb gamma encoded color
     if (samps.x == samps.y-1) accRad[gid].xyz = pow(vec3(clamp(accRad[gid].xyz, 0, 1)), vec3(0.45)) * 255 + 0.5;
+
+    //accRad[gid] = vec4( 255.0, 0.0, 0.0, 127.0 ); // DEBUG
 
     //accRad[gid] = vec4( 255.0, 127.0, 0.0, 127.5 );
 }

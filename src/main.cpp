@@ -1,8 +1,6 @@
-
 #include <vulkan/vulkan.h>
 
 #include <vector>
-//#include <array>
 #include <algorithm>
 
 #include <string.h>
@@ -71,7 +69,6 @@ struct pushConst_t {
 
 #endif
 
-//#if 1
 #ifdef NDEBUG
 const bool enableValidationLayers = false;
 #else
@@ -89,11 +86,9 @@ const bool enableValidationLayers = true;
     }																									\
 }
 
-/*
-The application launches a compute shader that renders the mandelbrot set,
-by rendering it into a storage buffer.
-The storage buffer is then read from the GPU, and saved as .png.
-*/
+// The application launches a compute shader that renders the mandelbrot set,
+// by rendering it into a storage buffer.
+// The storage buffer is then read from the GPU, and saved as .png.
 class ComputeApplication {
 private:
     // The pixels of the rendered mandelbrot set are in this format:
@@ -101,57 +96,40 @@ private:
         float r, g, b, a;
     };
 
-    /*
-    In order to use Vulkan, you must create an instance.
-    */
+    // In order to use Vulkan, you must create an instance.
     VkInstance instance;
 
     VkDebugReportCallbackEXT debugReportCallback;
-    /*
-    The physical device is some device on the system that supports usage of Vulkan.
-    Often, it is simply a graphics card that supports Vulkan.
-    */
+
+    // The physical device is some device on the system that supports usage of Vulkan.
+    // Often, it is simply a graphics card that supports Vulkan.
     VkPhysicalDevice physicalDevice;
-    /*
-    Then we have the logical device VkDevice, which basically allows
-    us to interact with the physical device.
-    */
+
+    // Then we have the logical device VkDevice, which basically allows
+    // us to interact with the physical device.
     VkDevice device;
 
-    /*
-    The pipeline specifies the pipeline that all graphics and compute commands pass though in Vulkan.
-
-    We will be creating a simple compute pipeline in this application.
-    */
+    // The pipeline specifies the pipeline that all graphics and compute commands pass though in Vulkan.
+    // We will be creating a simple compute pipeline in this application.
     VkPipeline pipeline;
     VkPipelineLayout pipelineLayout;
     VkShaderModule computeShaderModule;
 
-    /*
-    The command buffer is used to record commands, that will be submitted to a queue.
-
-    To allocate such command buffers, we use a command pool.
-    */
+    // The command buffer is used to record commands, that will be submitted to a queue.
+    // To allocate such command buffers, we use a command pool.
     VkCommandPool commandPool;
     VkCommandBuffer commandBuffer;
 
-    /*
-
-    Descriptors represent resources in shaders. They allow us to use things like
-    uniform buffers, storage buffers and images in GLSL.
-
-    A single descriptor represents a single resource, and several descriptors are organized
-    into descriptor sets, which are basically just collections of descriptors.
-    */
+    // Descriptors represent resources in shaders. They allow us to use things like
+    // uniform buffers, storage buffers and images in GLSL.
+    // A single descriptor represents a single resource, and several descriptors are organized
+    // into descriptor sets, which are basically just collections of descriptors.
     VkDescriptorPool descriptorPool;
     VkDescriptorSet descriptorSet;
     VkDescriptorSetLayout descriptorSetLayout;
 
-    /*
-    The mandelbrot set will be rendered to this buffer.
-
-    The memory that backs the buffer is bufferMemory.
-    */
+    // The mandelbrot set / path-traced scene will be rendered to this buffer.
+    // The memory that backs the buffer is bufferMemory.
     VkBuffer buffer;
     VkDeviceMemory bufferMemory;
     uint32_t bufferSize; // size of `buffer` in bytes.
@@ -168,24 +146,19 @@ private:
 
     std::vector<const char *> enabledLayers;
 
-    /*
-    In order to execute commands on a device(GPU), the commands must be submitted
-    to a queue. The commands are stored in a command buffer, and this command buffer
-    is given to the queue.
+    // In order to execute commands on a device(GPU), the commands must be submitted
+    // to a queue. The commands are stored in a command buffer, and this command buffer
+    // is given to the queue.
 
-    There will be different kinds of queues on the device. Not all queues support
-    graphics operations, for instance. For this application, we at least want a queue
-    that supports compute operations.
-    */
+    // There will be different kinds of queues on the device. Not all queues support
+    // graphics operations, for instance. For this application, we at least want a queue
+    // that supports compute operations.
     VkQueue queue; // a queue supporting compute operations.
 
-    /*
-    Groups of queues that have the same capabilities(for instance, they all supports graphics and computer operations),
-    are grouped into queue families.
-
-    When submitting a command buffer, you must specify to which queue in the family you are submitting to.
-    This variable keeps track of the index of that queue in its family.
-    */
+    // Groups of queues that have the same capabilities(for instance, they all supports graphics and computer operations),
+    // are grouped into queue families.
+    // When submitting a command buffer, you must specify to which queue in the family you are submitting to.
+    // This variable keeps track of the index of that queue in its family.
     uint32_t queueFamilyIndex;
 
 public:
@@ -216,8 +189,7 @@ public:
         // Save that buffer as a png on disk.
         saveRenderedImage();
 
-        // Clean up all vulkan resources.
-        cleanup();
+        cleanupVulkanResources();
     }
 
     void saveRenderedImage() {
@@ -247,6 +219,7 @@ public:
 
         // Now we save the acquired color data to a .png.
     #if defined( MANDELBROT_MODE ) // see Makefile        
+        printf( "writing mandelbrot.png\n" );
         unsigned error = lodepng::encode("mandelbrot.png", image, WIDTH, HEIGHT);
     #elif defined( PATHTRACER_MODE )
         // due to pinhole cam the image is upside-down and mirrored - undo that!
@@ -264,6 +237,7 @@ public:
                 std::swap( pRGBA[ from ], pRGBA[ to ] );
             }
         }
+        printf( "writing pathtracer.png\n" );
         unsigned error = lodepng::encode("pathtracer.png", image, WIDTH, HEIGHT);
     #endif
         if (error) printf("encoder error %d: %s", error, lodepng_error_text(error));
@@ -287,24 +261,19 @@ public:
     void createInstance() {
         std::vector<const char *> enabledInstanceExtensions;
 
-        /*
-        By enabling validation layers, Vulkan will emit warnings if the API
-        is used incorrectly. We shall enable the layer VK_LAYER_LUNARG_standard_validation,
-        which is basically a collection of several useful validation layers.
-        */
+        // By enabling validation layers, Vulkan will emit warnings if the API
+        // is used incorrectly. We shall enable the layer VK_LAYER_LUNARG_standard_validation,
+        // which is basically a collection of several useful validation layers.
         if (enableValidationLayers) {
-            /*
-            We get all supported layers with vkEnumerateInstanceLayerProperties.
-            */
+
+            // We get all supported layers with vkEnumerateInstanceLayerProperties.
             uint32_t layerCount;
             vkEnumerateInstanceLayerProperties(&layerCount, NULL);
 
             std::vector<VkLayerProperties> layerProperties(layerCount);
             vkEnumerateInstanceLayerProperties(&layerCount, layerProperties.data());
 
-            /*
-            And then we simply check if VK_LAYER_LUNARG_standard_validation is among the supported layers.
-            */
+            // And then we simply check if VK_LAYER_LUNARG_standard_validation is among the supported layers.
             bool foundLayer = false;
             for (VkLayerProperties prop : layerProperties) {
                 //if (strcmp("VK_LAYER_LUNARG_standard_validation", prop.layerName) == 0) {
@@ -321,13 +290,9 @@ public:
             //enabledLayers.push_back("VK_LAYER_LUNARG_standard_validation"); // Alright, we can use this layer.
             enabledLayers.push_back("VK_LAYER_KHRONOS_validation"); // Alright, we can use this layer.
 
-            /*
-            We need to enable an extension named VK_EXT_DEBUG_REPORT_EXTENSION_NAME,
-            in order to be able to print the warnings emitted by the validation layer.
-
-            So again, we just check if the extension is among the supported extensions.
-            */
-
+            // We need to enable an extension named VK_EXT_DEBUG_REPORT_EXTENSION_NAME,
+            // in order to be able to print the warnings emitted by the validation layer.
+            // So again, we just check if the extension is among the supported extensions.
             uint32_t extensionCount;
 
             vkEnumerateInstanceExtensionProperties(NULL, &extensionCount, NULL);
@@ -364,15 +329,10 @@ public:
             //enabledExtensions.push_back( "VK_KHR_portability_subset" );
         }
 
-        /*
-        Next, we actually create the instance.
+        // Next, we actually create the instance.
 
-        */
-
-        /*
-        Contains application info. This is actually not that important.
-        The only real important field is apiVersion.
-        */
+        // Contains application info. This is actually not that important.
+        // The only real important field is apiVersion.
         VkApplicationInfo applicationInfo = {};
         applicationInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
         applicationInfo.pApplicationName = "Hello world app";
@@ -392,19 +352,15 @@ public:
         instanceCreateInfo.enabledExtensionCount = enabledInstanceExtensions.size();
         instanceCreateInfo.ppEnabledExtensionNames = enabledInstanceExtensions.data();
 
-        /*
-        Actually create the instance.
-        Having created the instance, we can actually start using vulkan.
-        */
+        // Actually create the instance.
+        // Having created the instance, we can actually start using vulkan.
         VK_CHECK_RESULT(vkCreateInstance(
             &instanceCreateInfo,
             NULL,
             &instance));
 
-        /*
-        Register a callback function for the extension VK_EXT_DEBUG_REPORT_EXTENSION_NAME, so that warnings emitted from the validation
-        layer are actually printed.
-        */
+        // Register a callback function for the extension VK_EXT_DEBUG_REPORT_EXTENSION_NAME, so that warnings emitted from the validation
+        // layer are actually printed.
         if (enableValidationLayers) {
             VkDebugReportCallbackCreateInfoEXT createInfo = {};
             createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT;
@@ -423,14 +379,9 @@ public:
 
     }
 
-    void findPhysicalDevice() {
-        /*
-        In this function, we find a physical device that can be used with Vulkan.
-        */
+    void findPhysicalDevice() { // In this function, we find a physical device that can be used with Vulkan.
 
-        /*
-        So, first we will list all physical devices on the system with vkEnumeratePhysicalDevices .
-        */
+        // So, first we will list all physical devices on the system with vkEnumeratePhysicalDevices .
         uint32_t deviceCount;
         vkEnumeratePhysicalDevices(instance, &deviceCount, NULL);
         if (deviceCount == 0) {
@@ -469,7 +420,6 @@ public:
             
             //printf( "device %u: %s\n", deviceNum, properties.deviceName );
             
-
             // !!! CRASHES !!!
             //uint32_t deviceExtensionCount;
             //vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &deviceExtensionCount, nullptr);
@@ -540,6 +490,8 @@ public:
         // pPhysicalDeviceFeatures->shaderInt64 = true;
 
         VkPhysicalDeviceFeatures physicalDeviceFeatures = {};
+        physicalDeviceFeatures.shaderFloat64 = VK_FALSE;
+        physicalDeviceFeatures.shaderInt64 = VK_FALSE;
         vkGetPhysicalDeviceFeatures( physicalDevice, &physicalDeviceFeatures );
         printf( "shaderInt64 is%s supported\n", ( physicalDeviceFeatures.shaderInt64 == VK_TRUE ) ? "" : " not" );        
                 
@@ -598,10 +550,8 @@ public:
         float queuePriorities = 1.0;  // we only have one queue, so this is not that imporant.
         queueCreateInfo.pQueuePriorities = &queuePriorities;
 
-        /*
-        Now we create the logical device. The logical device allows us to interact with the physical
-        device.
-        */
+        // Now we create the logical device. The logical device allows us to interact with the physical
+        // device.
         VkDeviceCreateInfo deviceCreateInfo = {};
 
         // Specify any desired device features here. We do not need any for this application, though.
@@ -631,19 +581,31 @@ public:
           (https://vulkan.lunarg.com/doc/view/1.2.162.1/mac/1.2-extensions/vkspec.html#VUID-VkDeviceCreateInfo-pProperties-04451)        
         */
         std::vector<const char*> deviceExtensions;
-        deviceExtensions.push_back( "VK_KHR_portability_subset" );
-        deviceCreateInfo.enabledExtensionCount = (uint32_t)deviceExtensions.size();
+        
+		//!!! deviceExtensions.push_back( "VK_KHR_portability_subset" );
+		 
+        
+		deviceCreateInfo.enabledExtensionCount = (uint32_t)deviceExtensions.size();
         deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions.data();
 
         // VkPhysicalDeviceFeatures2 physicalDeviceFeatures2{};
 		// //if (pNextChain) {
-		// 	physicalDeviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-		// 	physicalDeviceFeatures2.features = enabledFeatures;
-		// 	physicalDeviceFeatures2.pNext = pNextChain;
-		// 	deviceCreateInfo.pEnabledFeatures = nullptr;
-		// 	deviceCreateInfo.pNext = &physicalDeviceFeatures2;
+			// physicalDeviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+			// // physicalDeviceFeatures2.features = enabledFeatures;
+			// // physicalDeviceFeatures2.pNext = pNextChain;
+			// // deviceCreateInfo.pEnabledFeatures = nullptr;
+			// deviceCreateInfo.pNext = &physicalDeviceFeatures2;
 		// //}
 
+		// VkPhysicalDeviceVulkan11Features vk11features;
+		// //if (pNextChain) 
+		// {
+			// vk11features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
+			// //vk11features.features = enabledFeatures;
+			// // vk11features.pNext = pNextChain;
+			// //deviceCreateInfo.pEnabledFeatures = nullptr;
+			// deviceCreateInfo.pNext = &vk11features;
+		// }
 
         VK_CHECK_RESULT(vkCreateDevice(physicalDevice, &deviceCreateInfo, NULL, &device)); // create logical device.
 
@@ -657,10 +619,8 @@ public:
 
         vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memoryProperties);
 
-        /*
-        How does this search work?
-        See the documentation of VkPhysicalDeviceMemoryProperties for a detailed description.
-        */
+        // How does this search work?
+        // See the documentation of VkPhysicalDeviceMemoryProperties for a detailed description.
         for (uint32_t i = 0; i < memoryProperties.memoryTypeCount; ++i) {
             if ((memoryTypeBits & (1 << i)) &&
                 ((memoryProperties.memoryTypes[i].propertyFlags & properties) == properties))
@@ -670,10 +630,8 @@ public:
     }
 
     void createBuffer() {
-        /*
-        We will now create a buffer. We will render the mandelbrot set into this buffer
-        in a computer shade later.
-        */
+        // We will now create a buffer. We will render the mandelbrot set into this buffer
+        // in a computer shade later.
 
        printf( "buffer create!\n" ); fflush( stdout );
 
@@ -685,25 +643,19 @@ public:
 
         VK_CHECK_RESULT(vkCreateBuffer(device, &bufferCreateInfo, NULL, &buffer)); // create buffer.
 
-        /*
-        But the buffer doesn't allocate memory for itself, so we must do that manually.
-        */
+        // But the buffer doesn't allocate memory for itself, so we must do that manually.
 
-        /*
-        First, we find the memory requirements for the buffer.
-        */
+        // First, we find the memory requirements for the buffer.
         VkMemoryRequirements memoryRequirements;
         vkGetBufferMemoryRequirements(device, buffer, &memoryRequirements);
 
-        /*
-        Now use obtained memory requirements info to allocate the memory for the buffer.
-        */
+        // Now use obtained memory requirements info to allocate the memory for the buffer.
         VkMemoryAllocateInfo allocateInfo = {};
         allocateInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
         allocateInfo.allocationSize = memoryRequirements.size; // specify required memory.
+
         /*
         There are several types of memory that can be allocated, and we must choose a memory type that:
-
         1) Satisfies the memory requirements(memoryRequirements.memoryTypeBits).
         2) Satifies our own usage requirements. We want to be able to read the buffer memory from the GPU to the CPU
            with vkMapMemory, so we set VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT.
@@ -798,10 +750,10 @@ public:
     }
 
     void createDescriptorSetLayout() {
-        /*
-        Here we specify a descriptor set layout. This allows us to bind our descriptors to
-        resources in the shader.
-        */
+        
+        // Here we specify a descriptor set layout. This allows us to bind our descriptors to
+        // resources in the shader.
+        
 
     #if defined( MANDELBROT_MODE )
         /*
@@ -865,10 +817,10 @@ public:
     }
 
     void createDescriptorSet() {
-        /*
-        So we will allocate a descriptor set here.
-        But we need to first create a descriptor pool to do that.
-        */
+
+        // So we will allocate a descriptor set here.
+        // But we need to first create a descriptor pool to do that.
+
     #if defined( MANDELBROT_MODE ) 
         VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = {};
         descriptorPoolCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
@@ -904,9 +856,7 @@ public:
 
         printf( "after vkCreateDescriptorPool()\n" ); fflush( stdout );
 
-        /*
-        With the pool allocated, we can now allocate the descriptor set.
-        */
+        // With the pool allocated, we can now allocate the descriptor set.
         VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = {};
         descriptorSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
         descriptorSetAllocateInfo.descriptorPool = descriptorPool; // pool to allocate from.
@@ -919,10 +869,8 @@ public:
         VK_CHECK_RESULT(vkAllocateDescriptorSets(device, &descriptorSetAllocateInfo, &descriptorSet));
         printf( "after vkAllocateDescriptorSets()\n" ); fflush( stdout );
 
-        /*
-        Next, we need to connect our actual storage buffer with the descrptor.
-        We use vkUpdateDescriptorSets() to update the descriptor set.
-        */
+        // Next, we need to connect our actual storage buffer with the descrptor.
+        // We use vkUpdateDescriptorSets() to update the descriptor set.
 
     #if defined( MANDELBROT_MODE )
         // Specify the buffer to bind to the descriptor.
@@ -1042,22 +990,17 @@ public:
     }
 
     void createComputePipeline() {
-        /*
-        We create a compute pipeline here.
-        */
 
-        /*
-        Create a shader module. A shader module basically just encapsulates some shader code.
-        */
+        // Create a shader module. A shader module basically just encapsulates some shader code.
         uint32_t filelength;
     #if defined ( MANDELBROT_MODE )        
         // the code in mandelbrot.spv can be created by running the following command in the 'shaders' folder:
         // $(VULKAN_SDK)bin/glslangValidator -V mandelbrot.comp -o mandelbrot.spv
         // NOTE: if the instructions in mac-vulkan-setup-guide.md were followed, $(VULKAN_SDK)bin/ is
         //       actually part of the path, so you can just type 'glslangValidator -V mandelbrot.comp -o mandelbrot.spv'
-        uint32_t* code = readFile(filelength, "shaders/mandelbrot.spv");
+        uint32_t* code = readFile(filelength, "shaders/mandelbrot.generated.spv");
     #elif defined( PATHTRACER_MODE )
-        uint32_t* code = readFile(filelength, "shaders/pathTracer.spv");
+        uint32_t* code = readFile(filelength, "shaders/pathTracer.generated.spv");
     #endif
         VkShaderModuleCreateInfo createInfo = {};
         createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
@@ -1091,10 +1034,8 @@ public:
             pushConstantRange.size = sizeof( pushConst_t );
         #endif
 
-        /*
-        The pipeline layout allows the pipeline to access descriptor sets.
-        So we just specify the descriptor set layout we created earlier.
-        */
+        // The pipeline layout allows the pipeline to access descriptor sets.
+        // So we just specify the descriptor set layout we created earlier.
         VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo = {};
         pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
         pipelineLayoutCreateInfo.setLayoutCount = 1;
@@ -1110,9 +1051,6 @@ public:
         pipelineCreateInfo.stage = shaderStageCreateInfo;
         pipelineCreateInfo.layout = pipelineLayout;
 
-        /*
-        Now, we finally create the compute pipeline.
-        */
         VK_CHECK_RESULT(vkCreateComputePipelines(
             device, VK_NULL_HANDLE,
             1, &pipelineCreateInfo,
@@ -1120,11 +1058,11 @@ public:
     }
 
     void createCommandBuffer() {
-        /*
-        We are getting closer to the end. In order to send commands to the device(GPU),
-        we must first record commands into a command buffer.
-        To allocate a command buffer, we must first create a command pool. So let us do that.
-        */
+
+        // We are getting closer to the end. In order to send commands to the device(GPU),
+        // we must first record commands into a command buffer.
+        // To allocate a command buffer, we must first create a command pool. So let us do that.
+
         VkCommandPoolCreateInfo commandPoolCreateInfo = {};
         commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
         commandPoolCreateInfo.flags = 0;
@@ -1133,9 +1071,7 @@ public:
         commandPoolCreateInfo.queueFamilyIndex = queueFamilyIndex;
         VK_CHECK_RESULT(vkCreateCommandPool(device, &commandPoolCreateInfo, NULL, &commandPool));
 
-        /*
-        Now allocate a command buffer from the command pool.
-        */
+        // Now allocate a command buffer from the command pool.
         VkCommandBufferAllocateInfo commandBufferAllocateInfo = {};
         commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
         commandBufferAllocateInfo.commandPool = commandPool; // specify the command pool to allocate from.
@@ -1146,19 +1082,14 @@ public:
         commandBufferAllocateInfo.commandBufferCount = 1; // allocate a single command buffer.
         VK_CHECK_RESULT(vkAllocateCommandBuffers(device, &commandBufferAllocateInfo, &commandBuffer)); // allocate command buffer.
 
-        /*
-        Now we shall start recording commands into the newly allocated command buffer.
-        */
+        // Now we shall start recording commands into the newly allocated command buffer.
         VkCommandBufferBeginInfo beginInfo = {};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT; // the buffer is only submitted and used once in this application.
         VK_CHECK_RESULT(vkBeginCommandBuffer(commandBuffer, &beginInfo)); // start recording commands.
 
-        /*
-        We need to bind a pipeline, AND a descriptor set before we dispatch.
-
-        The validation layer will NOT give warnings if you forget these, so be very careful not to forget them.
-        */
+        // We need to bind a pipeline, AND a descriptor set before we dispatch.
+        // The validation layer will NOT give warnings if you forget these, so be very careful not to forget them.
         vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &descriptorSet, 0, NULL);
 
@@ -1167,11 +1098,9 @@ public:
         //float kColor[4]{ 0.9f, 0.1f, 0.3f, 0.0f };
         vkCmdPushConstants( commandBuffer, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof( float ) * 4, kColor );
 
-        /*
-        Calling vkCmdDispatch basically starts the compute pipeline, and executes the compute shader.
-        The number of workgroups is specified in the arguments.
-        If you are already familiar with compute shaders from OpenGL, this should be nothing new to you.
-        */
+        // Calling vkCmdDispatch basically starts the compute pipeline, and executes the compute shader.
+        // The number of workgroups is specified in the arguments.
+        // If you are already familiar with compute shaders from OpenGL, this should be nothing new to you.
         vkCmdDispatch(commandBuffer, (uint32_t)ceil(WIDTH / float(WORKGROUP_SIZE)), (uint32_t)ceil(HEIGHT / float(WORKGROUP_SIZE)), 1);
 
     #elif defined( PATHTRACER_MODE )
@@ -1187,11 +1116,9 @@ public:
             
             vkCmdPushConstants( commandBuffer, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof( pushConst_t ), &pushConst );
 
-            /*
-            Calling vkCmdDispatch basically starts the compute pipeline, and executes the compute shader.
-            The number of workgroups is specified in the arguments.
-            If you are already familiar with compute shaders from OpenGL, this should be nothing new to you.
-            */
+            // Calling vkCmdDispatch basically starts the compute pipeline, and executes the compute shader.
+            // The number of workgroups is specified in the arguments.
+            // If you are already familiar with compute shaders from OpenGL, this should be nothing new to you.
             vkCmdDispatch(commandBuffer, (uint32_t)ceil(WIDTH / float(WORKGROUP_SIZE)), (uint32_t)ceil(HEIGHT / float(WORKGROUP_SIZE)), 1);
         }
         printf( "\n   ### leaving spp loop ###\n\n" ); fflush( stdout );
@@ -1202,27 +1129,21 @@ public:
     }
 
     void runCommandBuffer() {
-        /*
-        Now we shall finally submit the recorded command buffer to a queue.
-        */
+        // Now we shall finally submit the recorded command buffer to a queue.
 
         VkSubmitInfo submitInfo = {};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
         submitInfo.commandBufferCount = 1; // submit a single command buffer
         submitInfo.pCommandBuffers = &commandBuffer; // the command buffer to submit.
 
-        /*
-          We create a fence.
-        */
+        // We create a fence.
         VkFence fence;
         VkFenceCreateInfo fenceCreateInfo = {};
         fenceCreateInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
         fenceCreateInfo.flags = 0;
         VK_CHECK_RESULT(vkCreateFence(device, &fenceCreateInfo, NULL, &fence));
 
-        /*
-        We submit the command buffer on the queue, at the same time giving a fence.
-        */
+        // We submit the command buffer on the queue, at the same time giving a fence.
         VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &submitInfo, fence));
         /*
         The command will not have finished executing until the fence is signalled.
@@ -1236,10 +1157,7 @@ public:
         vkDestroyFence(device, fence, NULL);
     }
 
-    void cleanup() {
-        /*
-        Clean up all Vulkan Resources.
-        */
+    void cleanupVulkanResources() {
 
         if (enableValidationLayers) {
             // destroy callback.
@@ -1271,11 +1189,11 @@ public:
 
 int main( int argc, char* argv[] ) {
 
-#if defined( PATHTRACER_MODE )
+// #if defined( PATHTRACER_MODE )
     // spp = argc>1 ? atoi(argv[1]) : 100;    // samples per pixel 
     // resy = argc>2 ? atoi(argv[2]) : 600;    // vertical pixel resolution
     // resx = resy*3/2;	                    // horiziontal pixel resolution
-#endif
+// #endif
 
     ComputeApplication app;
 
