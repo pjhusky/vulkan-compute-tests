@@ -7,6 +7,8 @@
 mandelbrot-*
 pocketpt-*
 
+**.spv
+
 *.lib
 *.exp
 
