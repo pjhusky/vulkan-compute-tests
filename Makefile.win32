@@ -1,26 +1,28 @@
 MANDEL_EXE=mandelbrot-win32.exe
 PATHTRACER_EXE=pocketpt-win32.exe
 
-all: $(MANDEL_EXE) $(PATHTRACER_EXE)
-# all: $(PATHTRACER_EXE)
+DEBUG_FLAGS=
+# DEBUG_FLAGS=-DNDEBUG
 
-$(MANDEL_EXE): src\main.cpp src\lodepng.cpp src\lodepng.h shaders\mandelbrot.generated.spv Makefile.win32
-	g++ -std=c++11 -O3 -I$(VULKAN_SDK)\include -DMANDELBROT_MODE -DNDEBUG src\main.cpp src\lodepng.cpp -o $(MANDEL_EXE) -L$(VULKAN_SDK)\lib -lvulkan-1
+UTIL_HEADERS=src\vulkanComputeApp.h src\lodepng.h
+UTIL_CPPS=src\vulkanComputeApp.cpp src\lodepng.cpp
+
+all: $(MANDEL_EXE) $(PATHTRACER_EXE)
+
+$(MANDEL_EXE): src\main.cpp $(UTIL_HEADERS) $(UTIL_CPPS) src\mandelbrotApp.h shaders\mandelbrot.generated.spv Makefile.win32
+	g++ -std=c++11 -O3 -I$(VULKAN_SDK)\include -DMANDELBROT_MODE $(DEBUG_FLAGS) $(UTIL_CPPS) src\main.cpp  -o $(MANDEL_EXE) -L$(VULKAN_SDK)\lib -lvulkan-1
 
 shaders\mandelbrot.generated.spv: shaders\mandelbrot.comp Makefile.win32
 	$(VULKAN_SDK)\bin\glslangValidator -V shaders\mandelbrot.comp -o shaders\mandelbrot.generated.spv
 
-$(PATHTRACER_EXE): src\main.cpp src\lodepng.cpp src\lodepng.h shaders\pathTracer.generated.spv Makefile.win32
-	g++ -std=c++11 -O3 -I$(VULKAN_SDK)\include -DPATHTRACER_MODE -DNDEBUG src\main.cpp src\lodepng.cpp -o $(PATHTRACER_EXE) -L$(VULKAN_SDK)\Lib -lvulkan-1
+$(PATHTRACER_EXE): src\main.cpp $(UTIL_HEADERS) $(UTIL_CPPS) src\pathtracerApp.h  shaders\pathtracer.generated.spv Makefile.win32
+	g++ -std=c++11 -O3 -I$(VULKAN_SDK)\include -DPATHTRACER_MODE $(DEBUG_FLAGS) $(UTIL_CPPS) src\main.cpp  -o $(PATHTRACER_EXE) -L$(VULKAN_SDK)\Lib -lvulkan-1
 
-# shaders\pathTracer.generated.spv: shaders\pathTracer.comp shaders\emulateDouble.h.glsl shaders\*.h.glsl Makefile.win32
-# shaders\pathTracer.generated.spv: shaders\pathTracer.comp shaders\*.h.glsl Makefile.win32
-# $(VULKAN_SDK)bin\glslangValidator -V shaders\pathTracer.comp -o shaders\pathTracer.generated.spv
-shaders\pathTracer.generated.spv: shaders\pathTracer.comp shaders\emulateDouble.h.glsl Makefile.win32
-	$(VULKAN_SDK)\bin\glslc -E shaders\pathTracer.comp -o shaders\pathTracer.preprocessed.comp
-	$(VULKAN_SDK)\bin\glslangValidator -V shaders\pathTracer.preprocessed.comp -o shaders\pathTracer.generated.spv
-	$(VULKAN_SDK)\bin\glslc -O0 shaders\pathTracer.comp -o shaders\pathTracer.generated.spv
-	del /Q shaders\pathTracer.preprocessed.comp
+shaders\pathtracer.generated.spv: shaders\pathtracer.comp shaders\emulateDouble.h.glsl Makefile.win32
+	$(VULKAN_SDK)\bin\glslc -E shaders\pathtracer.comp -o shaders\pathtracer.preprocessed.comp
+	$(VULKAN_SDK)\bin\glslangValidator -V shaders\pathtracer.preprocessed.comp -o shaders\pathtracer.generated.spv
+	$(VULKAN_SDK)\bin\glslc -O0 shaders\pathtracer.comp -o shaders\pathtracer.generated.spv
+	del /Q shaders\pathtracer.preprocessed.comp
 
 lofi-run: $(PATHTRACER_EXE)
 	$(PATHTRACER_EXE) 100 400
@@ -28,6 +30,5 @@ lofi-run: $(PATHTRACER_EXE)
 run: $(PATHTRACER_EXE)
 	$(PATHTRACER_EXE)
 
-
 clean:
-	del /Q  $(MANDEL_EXE) $(PATHTRACER_EXE) pathTracer.png mandelbrot.png
+	del /Q  $(MANDEL_EXE) $(PATHTRACER_EXE) pathtracer.png mandelbrot.png shaders\pathtracer.generated.spv shaders\mandelbrot.generated.spv

@@ -1,8 +1,9 @@
 #version 450
 #extension GL_ARB_separate_shader_objects : enable
 
-#define WIDTH 3200
-#define HEIGHT 2400
+// dimensions must match MandelbrotApp
+#define WIDTH 2000
+#define HEIGHT 2000
 #define WORKGROUP_SIZE 32
 layout (local_size_x = WORKGROUP_SIZE, local_size_y = WORKGROUP_SIZE, local_size_z = 1 ) in;
 
