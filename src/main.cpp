@@ -1,27 +1,15 @@
-
-// #include <vector>
-// #include <algorithm>
-
-// #include <string.h>
-// #include <assert.h>
 #include <stdexcept>
-// #include <cmath>
 
-// #include "lodepng.h" //Used for png encoding.
-
+// make sure that one token is defined
+#if !defined( MANDELBROT_MODE ) && !defined( PATHTRACER_MODE )
+    #define PATHTRACER_MODE
+#endif
 
 #if defined( MANDELBROT_MODE )
     #include "mandelbrotApp.h"
 #elif defined( PATHTRACER_MODE ) 
     #include "pathtracerApp.h"
 #endif
-
-
-
-#if !defined( MANDELBROT_MODE ) && !defined( PATHTRACER_MODE )
-    #define PATHTRACER_MODE
-#endif
-
 
 
 int main( int argc, char* argv[] ) {
