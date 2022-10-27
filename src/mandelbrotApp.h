@@ -3,7 +3,7 @@
 
 #include "vulkanComputeApp.h"
 
-#include "lodepng.h" //Used for png encoding.
+#include "external/lodepng/lodepng.h" //Used for png encoding.
 
 struct MandelbrotApp : public VulkanComputeApp {
 

@@ -4,8 +4,8 @@ PATHTRACER_EXE=pocketpt-win32.exe
 DEBUG_FLAGS=
 # DEBUG_FLAGS=-DNDEBUG
 
-UTIL_HEADERS=src\vulkanComputeApp.h src\lodepng.h
-UTIL_CPPS=src\vulkanComputeApp.cpp src\lodepng.cpp
+UTIL_HEADERS=src\vulkanComputeApp.h src\external\lodepng\lodepng.h
+UTIL_CPPS=src\vulkanComputeApp.cpp src\external\lodepng\lodepng.cpp
 
 all: $(MANDEL_EXE) $(PATHTRACER_EXE)
 
