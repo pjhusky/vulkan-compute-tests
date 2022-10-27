@@ -11,10 +11,9 @@ Since on macOS, Vulkan does not support double-precision floats, 64-bit floats a
 
 # Demo
 
-The application launches a compute shader that renders the mandelbrot set or renders a simple scene using path tracing, by writing results into a storage buffer.
-The storage buffer is then read from the GPU, and saved as `.png`. Check the source code comments for further info.
+The application launches a compute shader that renders a simple scene using path tracing / calculates the Mandelbrot set, and writes resulting pixels into a storage buffer.
+The storage buffer is then transferred from GPU- to CPU memory, and saved as `.png`.
 
 ## Building
 
-The project uses a bare-bones Makefile, which can also be run on Windows using mingw32-make -f Makefile.win32. When running the programs,
-the png files named `mandelbrot.png` and 'pathtracer.png' are be created. 
+The project uses a bare-bones Makefile, which can also be run on Windows using `mingw32-make -f Makefile.win32` (tested with a fairly recent [tdm-gcc](https://jmeubank.github.io/tdm-gcc/) installation on Windows 10). When running the created programs, the png files named `mandelbrot.png` /  `pathtracer.png` are created. 
