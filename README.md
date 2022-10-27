@@ -1,12 +1,9 @@
 # Vulkan Minimal Compute
 
-This is a simple demo that demonstrates how to use Vulkan for compute operations only.
-In other words, this demo does nothing related to graphics, 
-and only uses Vulkan to execute some computation on the GPU.
-For this demo, Vulkan is used to path-trace a simple scene / calculate the Mandelbrot set on the GPU. The demos are very simple and act more as illustrative examples of how to use compute shaders with Vulkan. **The code is heavily commented, so it should be useful for people interested in learning Vulkan**.
+This is a simple demo that demonstrates how to use Vulkan compute shaders.
+For this demo, Vulkan is used to path-trace a simple scene / calculate the Mandelbrot set on the GPU. **The code is heavily commented, so it can be seen as a rough getting-started tutorial for using Vulkan compute shaders**.
 
-The only depdendencies are Vulkan and `lodepng`. `lodepng` is merely used for png encoding. Vulkan can be installed
-from `lunarg.com`
+The only depdendencies are Vulkan and `lodepng`, which is merely used for png encoding. Vulkan can be installed from `lunarg.com`
 
 Since on macOS, Vulkan does not support double-precision floats, 64-bit floats are emulated using two 32-bit single-precision floats where necessary.
 
@@ -15,8 +12,7 @@ Since on macOS, Vulkan does not support double-precision floats, 64-bit floats a
 # Demo
 
 The application launches a compute shader that renders the mandelbrot set or renders a simple scene using path tracing, by writing results into a storage buffer.
-The storage buffer is then read from the GPU, and saved as `.png`. Check the source code comments
-for further info.
+The storage buffer is then read from the GPU, and saved as `.png`. Check the source code comments for further info.
 
 ## Building
 
