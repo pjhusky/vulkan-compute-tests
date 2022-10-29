@@ -9,8 +9,8 @@
 
 #include "lodepng.h" //Used for png encoding.
 
-const int WIDTH = 3200; // Size of rendered mandelbrot set.
-const int HEIGHT = 2400; // Size of renderered mandelbrot set.
+const int WIDTH  = 1000; // Size of rendered mandelbrot set. => must match mandelbrot.comp
+const int HEIGHT = 1000; // Size of renderered mandelbrot set. => must match mandelbrot.comp
 const int WORKGROUP_SIZE = 32; // Workgroup size in compute shader.
 
 #ifdef NDEBUG
@@ -628,7 +628,7 @@ public:
         // $(VULKAN_SDK)bin/glslangValidator -V mandelbrot.comp -o mandelbrot.spv
         // NOTE: if the instructions in mac-vulkan-setup-guide.md were followed, $(VULKAN_SDK)bin/ is
         //       actually part of the path, so you can just type 'glslangValidator -V mandelbrot.comp -o mandelbrot.spv'
-        uint32_t* code = readFile(filelength, "shaders/mandelbrot.spv");
+        uint32_t* code = readFile(filelength, "shaders/mandelbrot.generated.spv");
         VkShaderModuleCreateInfo createInfo = {};
         createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
         createInfo.pCode = code;
