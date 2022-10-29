@@ -9,6 +9,7 @@ mandelbrot-*
 *.lib
 *.exp
 
+**.spv
 
 # vs code settings
 .vscode/
